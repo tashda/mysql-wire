@@ -4,21 +4,27 @@ import MySQLWire
 public actor MySQLServerConnection: Sendable {
     private let configuration: MySQLConfiguration
     private let logger: Logger
+    private let healthPolicy: MySQLConnectionHealthPolicy
     private let connectionFactory: @Sendable (MySQLConfiguration, Logger) async throws -> any MySQLConnectionSession
 
     private var primaryConnection: (any MySQLConnectionSession)?
     private var metadataConnection: (any MySQLConnectionSession)?
     private var activityConnection: (any MySQLConnectionSession)?
+    private let preparedStatementCache: PreparedStatementCache
 
     public init(
         configuration: MySQLConfiguration,
         logger: Logger = Logger(label: "mysql-kit.server-connection"),
+        healthPolicy: MySQLConnectionHealthPolicy? = nil,
+        preparedStatementCache: PreparedStatementCache = PreparedStatementCache(),
         connectionFactory: @escaping @Sendable (MySQLConfiguration, Logger) async throws -> any MySQLConnectionSession = { configuration, logger in
             try await MySQLWireConnection.connect(configuration: configuration, logger: logger)
         }
     ) {
         self.configuration = configuration
         self.logger = logger
+        self.healthPolicy = healthPolicy ?? MySQLConnectionHealthPolicy(keepAliveInterval: configuration.keepAliveInterval)
+        self.preparedStatementCache = preparedStatementCache
         self.connectionFactory = connectionFactory
     }
 
@@ -66,14 +72,30 @@ public actor MySQLServerConnection: Sendable {
 
     public func ping() async throws {
         if let primaryConnection {
-            try await primaryConnection.validate()
+            try await validate(primaryConnection, role: .primary)
         }
         if let metadataConnection {
-            try await metadataConnection.validate()
+            try await validate(metadataConnection, role: .metadata)
         }
         if let activityConnection {
-            try await activityConnection.validate()
+            try await validate(activityConnection, role: .activity)
         }
+    }
+
+    public func recordPreparedStatement(_ sql: String) async {
+        await preparedStatementCache.touch(sql)
+    }
+
+    public func cachedPreparedStatements() async -> [PreparedStatementCache.Entry] {
+        await preparedStatementCache.cachedStatements()
+    }
+
+    public func resetPreparedStatements() async {
+        await preparedStatementCache.removeAll()
+    }
+
+    public func failureAction(for error: any Error) -> MySQLConnectionFailureAction {
+        healthPolicy.action(for: error)
     }
 
     public func close() async {
@@ -88,6 +110,32 @@ public actor MySQLServerConnection: Sendable {
         if let activityConnection {
             await activityConnection.close()
             self.activityConnection = nil
+        }
+        await preparedStatementCache.removeAll()
+    }
+
+    private enum ConnectionRole {
+        case primary
+        case metadata
+        case activity
+    }
+
+    private func validate(_ connection: any MySQLConnectionSession, role: ConnectionRole) async throws {
+        do {
+            try await connection.validate()
+        } catch {
+            switch healthPolicy.action(for: error) {
+            case .reconnectRequired, .closeRequired:
+                await connection.close()
+                switch role {
+                case .primary: primaryConnection = nil
+                case .metadata: metadataConnection = nil
+                case .activity: activityConnection = nil
+                }
+            case .noAction:
+                break
+            }
+            throw error
         }
     }
 }

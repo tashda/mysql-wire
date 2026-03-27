@@ -9,6 +9,7 @@ public struct MySQLQueryClient: Sendable {
     }
 
     public func query(_ sql: String, binds: [MySQLData] = []) async throws -> MySQLWireQueryResult {
+        await serverConnection.recordPreparedStatement(sql)
         let connection = try await serverConnection.primary()
         return try await connection.query(sql, binds: binds)
     }
