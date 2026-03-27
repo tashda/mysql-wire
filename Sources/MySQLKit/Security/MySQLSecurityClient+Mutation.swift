@@ -108,12 +108,12 @@ public extension MySQLSecurityClient {
         )
     }
 
-    private func executeSecurityStatement(_ sql: String) async throws {
+    func executeSecurityStatement(_ sql: String) async throws {
         let connection = try await serverConnection.primary()
         _ = try await connection.simpleQuery(sql)
     }
 
-    private func escapedLiteral(_ value: String) -> String {
+    func escapedLiteral(_ value: String) -> String {
         value.replacingOccurrences(of: "'", with: "''")
     }
 }

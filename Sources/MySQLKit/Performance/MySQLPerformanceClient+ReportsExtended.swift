@@ -57,4 +57,24 @@ public extension MySQLPerformanceClient {
             name: "waits_global_by_latency"
         )
     }
+
+    func waitsByUserByLatency(limit: Int = 50) async throws -> MySQLPerformanceReport {
+        try await runReport(
+            """
+            SELECT * FROM sys.waits_by_user_by_latency
+            LIMIT \(limit)
+            """,
+            name: "waits_by_user_by_latency"
+        )
+    }
+
+    func hostSummary(limit: Int = 50) async throws -> MySQLPerformanceReport {
+        try await runReport(
+            """
+            SELECT * FROM sys.host_summary
+            LIMIT \(limit)
+            """,
+            name: "host_summary"
+        )
+    }
 }

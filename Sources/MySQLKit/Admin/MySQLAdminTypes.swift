@@ -78,3 +78,31 @@ public struct MySQLServerVariableMutation: Sendable, Hashable {
         self.value = value
     }
 }
+
+public struct MySQLDumpOptions: Sendable, Hashable {
+    public let includeRoutines: Bool
+    public let includeTriggers: Bool
+    public let includeEvents: Bool
+    public let includeData: Bool
+    public let singleTransaction: Bool
+    public let whereClause: String?
+    public let tables: [String]
+
+    public init(
+        includeRoutines: Bool = true,
+        includeTriggers: Bool = true,
+        includeEvents: Bool = true,
+        includeData: Bool = true,
+        singleTransaction: Bool = true,
+        whereClause: String? = nil,
+        tables: [String] = []
+    ) {
+        self.includeRoutines = includeRoutines
+        self.includeTriggers = includeTriggers
+        self.includeEvents = includeEvents
+        self.includeData = includeData
+        self.singleTransaction = singleTransaction
+        self.whereClause = whereClause
+        self.tables = tables
+    }
+}

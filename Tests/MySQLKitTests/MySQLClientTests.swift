@@ -915,6 +915,18 @@ struct MySQLClientTests {
                 LIMIT 50
                 """: [
                     Self.textRow([("event", "wait/io/file/sql/binlog"), ("total_latency", "10 ms")])
+                ],
+                """
+                SELECT * FROM sys.waits_by_user_by_latency
+                LIMIT 50
+                """: [
+                    Self.textRow([("user", "root"), ("total_latency", "12 ms")])
+                ],
+                """
+                SELECT * FROM sys.host_summary
+                LIMIT 50
+                """: [
+                    Self.textRow([("host", "app.internal"), ("statements", "42")])
                 ]
             ]
         )
@@ -957,6 +969,8 @@ struct MySQLClientTests {
         let indexStats = try await client.performance.schemaIndexStatistics()
         let tableStats = try await client.performance.schemaTableStatistics()
         let waits = try await client.performance.waitsGlobalByLatency()
+        let waitsByUser = try await client.performance.waitsByUserByLatency()
+        let hostSummary = try await client.performance.hostSummary()
 
         #expect(setResult.value == "200")
         #expect(resetResult.value == nil)
@@ -967,6 +981,8 @@ struct MySQLClientTests {
         #expect(indexStats.name == "schema_index_statistics")
         #expect(tableStats.name == "schema_table_statistics")
         #expect(waits.name == "waits_global_by_latency")
+        #expect(waitsByUser.name == "waits_by_user_by_latency")
+        #expect(hostSummary.name == "host_summary")
         #expect(await primary.simpleQueries == [
             "SET GLOBAL max_connections = 200",
             "SET GLOBAL max_connections = DEFAULT",
@@ -1218,6 +1234,134 @@ struct MySQLClientTests {
             ["echo-refresh"],
             ["1", "PENELOPE", "2", "NICK"],
             ["3", "ED"]
+        ])
+    }
+
+    @Test
+    func securityAdministrationAndBackupOptionsAreTyped() async throws {
+        let accountLimitSQL = """
+        SELECT
+            max_questions,
+            max_updates,
+            max_connections,
+            max_user_connections
+        FROM mysql.user
+        WHERE User = ? AND Host = ?
+        LIMIT 1;
+        """
+
+        let metadata = MockConnectionSession(
+            simpleQueryResults: [
+                "SHOW GRANTS FOR 'ops'@'%'": [
+                    Self.textRow([("Grants for ops@%", "GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'ops'@'%'")])
+                ]
+            ],
+            preparedQueryResults: [
+                accountLimitSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("max_questions", "100"),
+                            ("max_updates", "50"),
+                            ("max_connections", "25"),
+                            ("max_user_connections", "10")
+                        ])
+                    ],
+                    metadata: nil
+                )
+            ]
+        )
+        let primary = MockConnectionSession()
+        let counter = ConnectionFactoryCounter()
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+                connectionFactory: { _, _ in
+                    let index = await counter.next()
+                    return index == 1 ? metadata : primary
+                }
+            )
+        )
+
+        let limits = try await client.security.accountLimits(for: "ops", host: "%")
+        let detectedRoles = try await client.security.administrativeRoles(for: "ops", host: "%")
+        let updatedLimits = try await client.security.setAccountLimits(
+            for: "ops",
+            host: "%",
+            limits: MySQLAccountLimits(
+                maxQueriesPerHour: 200,
+                maxUpdatesPerHour: 100,
+                maxConnectionsPerHour: 50,
+                maxUserConnections: 20
+            )
+        )
+        try await client.security.grantAdministrativeRole(MySQLAdministrativeRole.monitorAdmin, to: "ops", host: "%")
+        try await client.security.revokeAdministrativeRole(MySQLAdministrativeRole.monitorAdmin, from: "ops", host: "%")
+        let backupCommand = client.admin.backupCommand(
+            host: "db.internal",
+            port: 3306,
+            username: "echo",
+            database: "sakila",
+            outputPath: "/tmp/sakila.sql",
+            options: MySQLDumpOptions(
+                includeRoutines: true,
+                includeTriggers: false,
+                includeEvents: true,
+                includeData: false,
+                singleTransaction: true,
+                whereClause: "actor_id > 100",
+                tables: ["actor", "film"]
+            )
+        )
+        let restoreCommand = client.admin.restoreCommand(
+            host: "db.internal",
+            port: 3306,
+            username: "echo",
+            database: "sakila",
+            inputPath: "/tmp/sakila.sql",
+            defaultCharacterSet: "utf8mb4",
+            force: true
+        )
+
+        #expect(limits == MySQLAccountLimits(
+            maxQueriesPerHour: 100,
+            maxUpdatesPerHour: 50,
+            maxConnectionsPerHour: 25,
+            maxUserConnections: 10
+        ))
+        #expect(detectedRoles.contains(MySQLAdministrativeRole.monitorAdmin))
+        #expect(detectedRoles.contains(MySQLAdministrativeRole.processAdmin))
+        #expect(updatedLimits.operation == "ALTER USER LIMITS")
+        #expect(backupCommand == [
+            "mysqldump",
+            "--host=db.internal",
+            "--port=3306",
+            "--user=echo",
+            "--result-file=/tmp/sakila.sql",
+            "--single-transaction",
+            "--routines",
+            "--events",
+            "--no-data",
+            "--where=actor_id > 100",
+            "sakila",
+            "actor",
+            "film"
+        ])
+        #expect(restoreCommand == [
+            "mysql",
+            "--host=db.internal",
+            "--port=3306",
+            "--user=echo",
+            "--default-character-set=utf8mb4",
+            "--force",
+            "sakila",
+            "<",
+            "/tmp/sakila.sql"
+        ])
+        #expect(await primary.simpleQueries == [
+            "ALTER USER 'ops'@'%' WITH MAX_QUERIES_PER_HOUR 200 MAX_UPDATES_PER_HOUR 100 MAX_CONNECTIONS_PER_HOUR 50 MAX_USER_CONNECTIONS 20",
+            "GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'ops'@'%'",
+            "REVOKE PROCESS, REPLICATION CLIENT ON *.* FROM 'ops'@'%'"
         ])
     }
 

@@ -20,6 +20,38 @@ public struct MySQLUserAccount: Sendable, Hashable {
     }
 }
 
+public struct MySQLAccountLimits: Sendable, Hashable {
+    public let maxQueriesPerHour: Int
+    public let maxUpdatesPerHour: Int
+    public let maxConnectionsPerHour: Int
+    public let maxUserConnections: Int
+
+    public init(
+        maxQueriesPerHour: Int,
+        maxUpdatesPerHour: Int,
+        maxConnectionsPerHour: Int,
+        maxUserConnections: Int
+    ) {
+        self.maxQueriesPerHour = maxQueriesPerHour
+        self.maxUpdatesPerHour = maxUpdatesPerHour
+        self.maxConnectionsPerHour = maxConnectionsPerHour
+        self.maxUserConnections = maxUserConnections
+    }
+}
+
+public enum MySQLAdministrativeRole: String, Sendable, Hashable, CaseIterable {
+    case dba = "DBA"
+    case maintenanceAdmin = "MaintenanceAdmin"
+    case processAdmin = "ProcessAdmin"
+    case userAdmin = "UserAdmin"
+    case securityAdmin = "SecurityAdmin"
+    case monitorAdmin = "MonitorAdmin"
+    case dbManager = "DBManager"
+    case dbDesigner = "DBDesigner"
+    case replicationAdmin = "ReplicationAdmin"
+    case backupAdmin = "BackupAdmin"
+}
+
 public struct MySQLRoleAssignment: Sendable, Hashable {
     public let roleName: String
     public let roleHost: String
