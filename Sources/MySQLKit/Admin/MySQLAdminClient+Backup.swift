@@ -15,4 +15,22 @@ public extension MySQLAdminClient {
             database
         ]
     }
+
+    func restoreCommand(
+        host: String,
+        port: Int,
+        username: String,
+        database: String,
+        inputPath: String
+    ) -> [String] {
+        [
+            "mysql",
+            "--host=\(host)",
+            "--port=\(port)",
+            "--user=\(username)",
+            database,
+            "<",
+            inputPath
+        ]
+    }
 }

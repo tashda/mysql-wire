@@ -861,6 +861,68 @@ struct MySQLClientTests {
         #expect(recordedQueries.last == "EXECUTE mw_stmt_fixed USING @mw_p1, @mw_p2")
     }
 
+    @Test
+    func adminVariableMutationAndExtendedPerformanceReports() async throws {
+        let activity = MockConnectionSession(
+            simpleQueryResults: [
+                """
+                SELECT * FROM sys.statements_with_runtimes_in_95th_percentile
+                LIMIT 10
+                """: [
+                    Self.textRow([("query", "SELECT * FROM actor"), ("avg_latency", "100 ms")])
+                ],
+                """
+                SELECT * FROM sys.statements_with_full_table_scans
+                LIMIT 10
+                """: [
+                    Self.textRow([("query", "SELECT * FROM film_text"), ("rows_examined", "1000")])
+                ],
+                "SHOW ENGINE INNODB STATUS": [
+                    Self.textRow([("Status", "BUFFER POOL AND MEMORY")])
+                ]
+            ]
+        )
+        let primary = MockConnectionSession()
+        let counter = ConnectionFactoryCounter()
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root"),
+                connectionFactory: { _, _ in
+                    let index = await counter.next()
+                    return index == 1 ? primary : activity
+                }
+            )
+        )
+
+        let setResult = try await client.admin.setGlobalVariable("max_connections", to: "200")
+        let resetResult = try await client.admin.resetGlobalVariable("max_connections")
+        try await client.admin.flushTables()
+        let restoreCommand = client.admin.restoreCommand(
+            host: "db.internal",
+            port: 3307,
+            username: "echo",
+            database: "sakila",
+            inputPath: "/tmp/sakila.sql"
+        )
+        let topRuntime = try await client.performance.topRuntimeStatements()
+        let fullTableScans = try await client.performance.fullTableScans()
+        let innodbStatus = try await client.performance.innodbStatus()
+
+        #expect(setResult.value == "200")
+        #expect(resetResult.value == nil)
+        #expect(restoreCommand.first == "mysql")
+        #expect(topRuntime.name == "statements_with_runtimes_in_95th_percentile")
+        #expect(fullTableScans.name == "statements_with_full_table_scans")
+        #expect(innodbStatus.statusText == "BUFFER POOL AND MEMORY")
+        #expect(await primary.simpleQueries == [
+            "SET GLOBAL max_connections = 200",
+            "SET GLOBAL max_connections = DEFAULT",
+            "FLUSH TABLES"
+        ])
+    }
+
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
         let columnDefinitions = values.map { name, _ in columnDefinition(named: name) }
 

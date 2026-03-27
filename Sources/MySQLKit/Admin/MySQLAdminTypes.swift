@@ -68,3 +68,13 @@ public struct MySQLLogDestination: Sendable, Hashable {
         self.value = value
     }
 }
+
+public struct MySQLServerVariableMutation: Sendable, Hashable {
+    public let name: String
+    public let value: String?
+
+    public init(name: String, value: String?) {
+        self.name = name
+        self.value = value
+    }
+}
