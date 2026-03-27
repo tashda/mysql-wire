@@ -28,4 +28,15 @@ public struct MySQLMetadataClient: Sendable {
         let connection = try await serverConnection.primary()
         try await connection.changeDatabase(database)
     }
+
+    func resolvedSchemaName(_ schema: String?) async throws -> String? {
+        if let schema, !schema.isEmpty {
+            return schema
+        }
+        return try await currentDatabase()
+    }
+
+    static func escapedIdentifier(_ identifier: String) -> String {
+        identifier.replacingOccurrences(of: "`", with: "``")
+    }
 }
