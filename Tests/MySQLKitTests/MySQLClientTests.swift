@@ -582,6 +582,57 @@ struct MySQLClientTests {
     }
 
     @Test
+    func securityReturnsSchemaPrivileges() async throws {
+        let schemaPrivilegesSQL = """
+        SELECT
+            grantee,
+            table_schema,
+            privilege_type,
+            is_grantable
+        FROM information_schema.schema_privileges
+        ORDER BY grantee, table_schema, privilege_type;
+        """
+
+        let metadata = MockConnectionSession(
+            preparedQueryResults: [
+                schemaPrivilegesSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("grantee", "'echo'@'%'"),
+                            ("table_schema", "sakila"),
+                            ("privilege_type", "SELECT"),
+                            ("is_grantable", "YES")
+                        ]),
+                        Self.textRow([
+                            ("grantee", "'reporter'@'%'"),
+                            ("table_schema", "sakila"),
+                            ("privilege_type", "EXECUTE"),
+                            ("is_grantable", "NO")
+                        ])
+                    ],
+                    metadata: nil
+                )
+            ]
+        )
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root"),
+                logger: Logger(label: "tests.mysql-kit.security.schema"),
+                connectionFactory: { _, _ in metadata }
+            )
+        )
+
+        let grants = try await client.security.schemaPrivileges()
+
+        #expect(grants.count == 2)
+        #expect(grants.first?.tableSchema == "sakila")
+        #expect(grants.first?.tableName == nil)
+        #expect(grants.first?.isGrantable == true)
+    }
+
+    @Test
     func transactionClientUsesPrimaryConnection() async throws {
         let primary = MockConnectionSession(
             simpleQueryResults: [
