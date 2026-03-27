@@ -106,3 +106,19 @@ public struct MySQLDumpOptions: Sendable, Hashable {
         self.tables = tables
     }
 }
+
+public enum MySQLRoutineKind: String, Sendable, Hashable {
+    case procedure = "PROCEDURE"
+    case function = "FUNCTION"
+}
+
+public enum MySQLTriggerTiming: String, Sendable, Hashable {
+    case before = "BEFORE"
+    case after = "AFTER"
+}
+
+public enum MySQLTriggerEvent: String, Sendable, Hashable {
+    case insert = "INSERT"
+    case update = "UPDATE"
+    case delete = "DELETE"
+}

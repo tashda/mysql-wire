@@ -1365,6 +1365,76 @@ struct MySQLClientTests {
         ])
     }
 
+    @Test
+    func programmableObjectDDLUsesExpectedStatements() async throws {
+        let primary = MockConnectionSession()
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+                connectionFactory: { _, _ in primary }
+            )
+        )
+
+        try await client.admin.createView(
+            schema: "sakila",
+            name: "actor_names",
+            definitionSQL: "SELECT actor_id, first_name FROM actor",
+            replace: true
+        )
+        try await client.admin.alterView(
+            schema: "sakila",
+            name: "actor_names",
+            definitionSQL: "SELECT actor_id, last_name FROM actor"
+        )
+        try await client.admin.dropView(schema: "sakila", name: "actor_names")
+        try await client.admin.createRoutine(
+            schema: "sakila",
+            name: "film_count",
+            kind: .function,
+            returnsSQL: "INT",
+            characteristicsSQL: "DETERMINISTIC",
+            bodySQL: "RETURN 42"
+        )
+        try await client.admin.dropRoutine(schema: "sakila", name: "film_count", kind: .function)
+        try await client.admin.createTrigger(
+            schema: "sakila",
+            name: "actor_bi",
+            timing: .before,
+            event: .insert,
+            table: "actor",
+            bodySQL: "SET NEW.first_name = UPPER(NEW.first_name);"
+        )
+        try await client.admin.dropTrigger(schema: "sakila", name: "actor_bi")
+        try await client.admin.createEvent(
+            schema: "sakila",
+            name: "daily_cleanup",
+            scheduleSQL: "EVERY 1 DAY",
+            bodySQL: "DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 30 DAY"
+        )
+        try await client.admin.alterEvent(
+            schema: "sakila",
+            name: "daily_cleanup",
+            scheduleSQL: "EVERY 7 DAY",
+            bodySQL: "DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 90 DAY",
+            enabled: false
+        )
+        try await client.admin.dropEvent(schema: "sakila", name: "daily_cleanup")
+
+        #expect(await primary.simpleQueries == [
+            "CREATE OR REPLACE VIEW `sakila`.`actor_names` AS SELECT actor_id, first_name FROM actor",
+            "ALTER VIEW `sakila`.`actor_names` AS SELECT actor_id, last_name FROM actor",
+            "DROP VIEW IF EXISTS `sakila`.`actor_names`",
+            "CREATE FUNCTION `sakila`.`film_count`() RETURNS INT DETERMINISTIC RETURN 42",
+            "DROP FUNCTION IF EXISTS `sakila`.`film_count`",
+            "CREATE TRIGGER `sakila`.`actor_bi` BEFORE INSERT ON `sakila`.`actor` FOR EACH ROW SET NEW.first_name = UPPER(NEW.first_name);",
+            "DROP TRIGGER IF EXISTS `sakila`.`actor_bi`",
+            "CREATE EVENT `sakila`.`daily_cleanup` ON SCHEDULE EVERY 1 DAY ON COMPLETION PRESERVE ENABLE DO DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 30 DAY",
+            "ALTER EVENT `sakila`.`daily_cleanup` ON SCHEDULE EVERY 7 DAY DISABLE DO DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 90 DAY",
+            "DROP EVENT IF EXISTS `sakila`.`daily_cleanup`"
+        ])
+    }
+
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
         let columnDefinitions = values.map { name, _ in columnDefinition(named: name) }
 

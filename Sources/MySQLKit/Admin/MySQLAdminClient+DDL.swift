@@ -17,7 +17,7 @@ public extension MySQLAdminClient {
         )
     }
 
-    private func escapedIdentifier(_ value: String) -> String {
+    func escapedIdentifier(_ value: String) -> String {
         value.replacingOccurrences(of: "`", with: "``")
     }
 }

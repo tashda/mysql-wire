@@ -30,8 +30,4 @@ public extension MySQLAdminClient {
         }
         return MySQLMaintenanceResult(operation: operation, messages: messages)
     }
-
-    private func escapedIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "`", with: "``")
-    }
 }
