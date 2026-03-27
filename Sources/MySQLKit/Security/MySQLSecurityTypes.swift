@@ -19,3 +19,37 @@ public struct MySQLUserAccount: Sendable, Hashable {
         self.passwordExpired = passwordExpired
     }
 }
+
+public struct MySQLRoleAssignment: Sendable, Hashable {
+    public let roleName: String
+    public let roleHost: String
+    public let grantee: String
+
+    public init(roleName: String, roleHost: String, grantee: String) {
+        self.roleName = roleName
+        self.roleHost = roleHost
+        self.grantee = grantee
+    }
+}
+
+public struct MySQLPrivilegeGrant: Sendable, Hashable {
+    public let grantee: String
+    public let tableSchema: String?
+    public let tableName: String?
+    public let privilegeType: String
+    public let isGrantable: Bool
+
+    public init(
+        grantee: String,
+        tableSchema: String?,
+        tableName: String?,
+        privilegeType: String,
+        isGrantable: Bool
+    ) {
+        self.grantee = grantee
+        self.tableSchema = tableSchema
+        self.tableName = tableName
+        self.privilegeType = privilegeType
+        self.isGrantable = isGrantable
+    }
+}

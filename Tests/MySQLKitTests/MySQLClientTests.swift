@@ -565,6 +565,178 @@ struct MySQLClientTests {
         #expect(snapshot.processes.first?.id == 7)
     }
 
+    @Test
+    func metadataSecurityAndReplicationCoverage() async throws {
+        let routinesSQL = """
+        SELECT
+            routine_schema,
+            routine_name,
+            routine_type,
+            routine_definition
+        FROM information_schema.routines
+        WHERE routine_schema = ?
+        ORDER BY routine_name;
+        """
+        let triggersSQL = """
+        SELECT
+            trigger_schema,
+            trigger_name,
+            event_object_table,
+            action_timing,
+            event_manipulation,
+            action_statement
+        FROM information_schema.triggers
+        WHERE trigger_schema = ?
+        ORDER BY trigger_name;
+        """
+        let eventsSQL = """
+        SELECT
+            event_schema,
+            event_name,
+            status,
+            interval_value,
+            interval_field,
+            event_definition
+        FROM information_schema.events
+        WHERE event_schema = ?
+        ORDER BY event_name;
+        """
+        let searchSQL = """
+        SELECT object_schema, object_name, object_type
+        FROM (
+            SELECT table_schema AS object_schema, table_name AS object_name, table_type AS object_type
+            FROM information_schema.tables
+            WHERE table_name LIKE ?
+            UNION ALL
+            SELECT routine_schema AS object_schema, routine_name AS object_name, routine_type AS object_type
+            FROM information_schema.routines
+            WHERE routine_name LIKE ?
+            UNION ALL
+            SELECT trigger_schema AS object_schema, trigger_name AS object_name, 'TRIGGER' AS object_type
+            FROM information_schema.triggers
+            WHERE trigger_name LIKE ?
+        ) matches
+        WHERE 1 = 1
+        
+        ORDER BY object_schema, object_name;
+        """
+        let rolesSQL = """
+        SELECT
+            FROM_USER,
+            FROM_HOST,
+            TO_USER,
+            TO_HOST
+        FROM mysql.role_edges
+        ORDER BY TO_USER, FROM_USER;
+        """
+        let privilegesSQL = """
+        SELECT
+            grantee,
+            table_schema,
+            table_name,
+            privilege_type,
+            is_grantable
+        FROM information_schema.table_privileges
+        ORDER BY grantee, table_schema, table_name, privilege_type;
+        """
+
+        let metadata = MockConnectionSession(
+            simpleQueryResults: [
+                "SHOW REPLICA STATUS": [
+                    Self.textRow([
+                        ("Replica_IO_Running", "Yes"),
+                        ("Replica_SQL_Running", "Yes")
+                    ])
+                ]
+            ],
+            preparedQueryResults: [
+                routinesSQL: MySQLWireQueryResult(
+                    rows: [Self.textRow([
+                        ("routine_schema", "sakila"),
+                        ("routine_name", "inventory_in_stock"),
+                        ("routine_type", "FUNCTION"),
+                        ("routine_definition", "RETURN 1")
+                    ])],
+                    metadata: nil
+                ),
+                triggersSQL: MySQLWireQueryResult(
+                    rows: [Self.textRow([
+                        ("trigger_schema", "sakila"),
+                        ("trigger_name", "film_ins"),
+                        ("event_object_table", "film"),
+                        ("action_timing", "AFTER"),
+                        ("event_manipulation", "INSERT"),
+                        ("action_statement", "SET @x = 1")
+                    ])],
+                    metadata: nil
+                ),
+                eventsSQL: MySQLWireQueryResult(
+                    rows: [Self.textRow([
+                        ("event_schema", "sakila"),
+                        ("event_name", "nightly_refresh"),
+                        ("status", "ENABLED"),
+                        ("interval_value", "1"),
+                        ("interval_field", "DAY"),
+                        ("event_definition", "CALL refresh()")
+                    ])],
+                    metadata: nil
+                ),
+                searchSQL: MySQLWireQueryResult(
+                    rows: [Self.textRow([
+                        ("object_schema", "sakila"),
+                        ("object_name", "film"),
+                        ("object_type", "BASE TABLE")
+                    ])],
+                    metadata: nil
+                ),
+                rolesSQL: MySQLWireQueryResult(
+                    rows: [Self.textRow([
+                        ("FROM_USER", "report_reader"),
+                        ("FROM_HOST", "%"),
+                        ("TO_USER", "echo"),
+                        ("TO_HOST", "localhost")
+                    ])],
+                    metadata: nil
+                ),
+                privilegesSQL: MySQLWireQueryResult(
+                    rows: [Self.textRow([
+                        ("grantee", "'echo'@'localhost'"),
+                        ("table_schema", "sakila"),
+                        ("table_name", "film"),
+                        ("privilege_type", "SELECT"),
+                        ("is_grantable", "NO")
+                    ])],
+                    metadata: nil
+                )
+            ]
+        )
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+                logger: Logger(label: "tests.mysql-kit.coverage"),
+                connectionFactory: { _, _ in metadata }
+            )
+        )
+
+        let routines = try await client.metadata.listRoutines(in: "sakila")
+        let triggers = try await client.metadata.listTriggers(in: "sakila")
+        let events = try await client.metadata.listEvents(in: "sakila")
+        let searchResults = try await client.metadata.searchObjects(matching: "%film%")
+        let roles = try await client.security.listRoleAssignments()
+        let privileges = try await client.security.tablePrivileges()
+        let replicaStatus = try await client.replication.replicaStatus()
+
+        #expect(routines.first?.name == "inventory_in_stock")
+        #expect(triggers.first?.name == "film_ins")
+        #expect(events.first?.schedule == "1 DAY")
+        #expect(searchResults.first?.name == "film")
+        #expect(roles.first?.roleName == "report_reader")
+        #expect(privileges.first?.privilegeType == "SELECT")
+        #expect(replicaStatus?.rawValues["Replica_IO_Running"]??.description == "Yes")
+    }
+
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
         let columnDefinitions = values.map { name, _ in columnDefinition(named: name) }
 

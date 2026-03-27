@@ -165,3 +165,63 @@ public struct MySQLTableStructure: Sendable, Hashable {
         self.dependencies = dependencies
     }
 }
+
+public struct MySQLRoutineInfo: Sendable, Hashable {
+    public let schema: String
+    public let name: String
+    public let type: String
+    public let definition: String?
+
+    public init(schema: String, name: String, type: String, definition: String?) {
+        self.schema = schema
+        self.name = name
+        self.type = type
+        self.definition = definition
+    }
+}
+
+public struct MySQLTriggerInfo: Sendable, Hashable {
+    public let schema: String
+    public let name: String
+    public let table: String
+    public let timing: String
+    public let event: String
+    public let statement: String?
+
+    public init(schema: String, name: String, table: String, timing: String, event: String, statement: String?) {
+        self.schema = schema
+        self.name = name
+        self.table = table
+        self.timing = timing
+        self.event = event
+        self.statement = statement
+    }
+}
+
+public struct MySQLEventInfo: Sendable, Hashable {
+    public let schema: String
+    public let name: String
+    public let status: String?
+    public let schedule: String?
+    public let definition: String?
+
+    public init(schema: String, name: String, status: String?, schedule: String?, definition: String?) {
+        self.schema = schema
+        self.name = name
+        self.status = status
+        self.schedule = schedule
+        self.definition = definition
+    }
+}
+
+public struct MySQLMetadataSearchResult: Sendable, Hashable {
+    public let schema: String
+    public let name: String
+    public let kind: String
+
+    public init(schema: String, name: String, kind: String) {
+        self.schema = schema
+        self.name = name
+        self.kind = kind
+    }
+}

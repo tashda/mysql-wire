@@ -22,4 +22,8 @@ public extension MySQLClient {
     var activity: MySQLActivityClient {
         MySQLActivityClient(serverConnection: serverConnection)
     }
+
+    var replication: MySQLReplicationClient {
+        MySQLReplicationClient(serverConnection: serverConnection)
+    }
 }
