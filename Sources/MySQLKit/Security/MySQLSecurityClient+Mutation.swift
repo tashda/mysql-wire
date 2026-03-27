@@ -4,7 +4,7 @@ public extension MySQLSecurityClient {
         host: String,
         password: String? = nil,
         authenticationPlugin: String? = nil
-    ) async throws {
+    ) async throws -> MySQLUserMutationResult {
         var statement = "CREATE USER '\(escapedLiteral(username))'@'\(escapedLiteral(host))'"
         if let authenticationPlugin, !authenticationPlugin.isEmpty {
             statement += " IDENTIFIED WITH \(authenticationPlugin)"
@@ -13,13 +13,36 @@ public extension MySQLSecurityClient {
             statement += " BY '\(escapedLiteral(password))'"
         }
         try await executeSecurityStatement(statement)
+        return MySQLUserMutationResult(username: username, host: host, operation: "CREATE USER")
     }
 
-    func dropUser(username: String, host: String, ifExists: Bool = true) async throws {
+    func dropUser(username: String, host: String, ifExists: Bool = true) async throws -> MySQLUserMutationResult {
         let existsClause = ifExists ? "IF EXISTS " : ""
         try await executeSecurityStatement(
             "DROP USER \(existsClause)'\(escapedLiteral(username))'@'\(escapedLiteral(host))'"
         )
+        return MySQLUserMutationResult(username: username, host: host, operation: "DROP USER")
+    }
+
+    func alterUserPassword(username: String, host: String, password: String) async throws -> MySQLUserMutationResult {
+        try await executeSecurityStatement(
+            "ALTER USER '\(escapedLiteral(username))'@'\(escapedLiteral(host))' IDENTIFIED BY '\(escapedLiteral(password))'"
+        )
+        return MySQLUserMutationResult(username: username, host: host, operation: "ALTER USER PASSWORD")
+    }
+
+    func lockUser(username: String, host: String) async throws -> MySQLUserMutationResult {
+        try await executeSecurityStatement(
+            "ALTER USER '\(escapedLiteral(username))'@'\(escapedLiteral(host))' ACCOUNT LOCK"
+        )
+        return MySQLUserMutationResult(username: username, host: host, operation: "LOCK USER")
+    }
+
+    func unlockUser(username: String, host: String) async throws -> MySQLUserMutationResult {
+        try await executeSecurityStatement(
+            "ALTER USER '\(escapedLiteral(username))'@'\(escapedLiteral(host))' ACCOUNT UNLOCK"
+        )
+        return MySQLUserMutationResult(username: username, host: host, operation: "UNLOCK USER")
     }
 
     func grant(
@@ -50,6 +73,39 @@ public extension MySQLSecurityClient {
 
     func dropRole(name: String, host: String = "%") async throws {
         try await executeSecurityStatement("DROP ROLE '\(escapedLiteral(name))'@'\(escapedLiteral(host))'")
+    }
+
+    func grantRole(
+        _ roleName: String,
+        roleHost: String = "%",
+        to username: String,
+        host: String
+    ) async throws {
+        try await executeSecurityStatement(
+            "GRANT '\(escapedLiteral(roleName))'@'\(escapedLiteral(roleHost))' TO '\(escapedLiteral(username))'@'\(escapedLiteral(host))'"
+        )
+    }
+
+    func revokeRole(
+        _ roleName: String,
+        roleHost: String = "%",
+        from username: String,
+        host: String
+    ) async throws {
+        try await executeSecurityStatement(
+            "REVOKE '\(escapedLiteral(roleName))'@'\(escapedLiteral(roleHost))' FROM '\(escapedLiteral(username))'@'\(escapedLiteral(host))'"
+        )
+    }
+
+    func setDefaultRole(
+        _ roleName: String,
+        roleHost: String = "%",
+        for username: String,
+        host: String
+    ) async throws {
+        try await executeSecurityStatement(
+            "SET DEFAULT ROLE '\(escapedLiteral(roleName))'@'\(escapedLiteral(roleHost))' TO '\(escapedLiteral(username))'@'\(escapedLiteral(host))'"
+        )
     }
 
     private func executeSecurityStatement(_ sql: String) async throws {

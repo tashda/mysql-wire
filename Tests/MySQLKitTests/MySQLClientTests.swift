@@ -480,7 +480,16 @@ struct MySQLClientTests {
 
     @Test
     func transactionClientUsesPrimaryConnection() async throws {
-        let primary = MockConnectionSession()
+        let primary = MockConnectionSession(
+            simpleQueryResults: [
+                "SHOW MASTER STATUS": [
+                    Self.textRow([
+                        ("File", "binlog.000001"),
+                        ("Position", "157")
+                    ])
+                ]
+            ]
+        )
         let client = MySQLClient(
             configuration: MySQLConfiguration(host: "localhost", username: "root"),
             serverConnection: MySQLServerConnection(
@@ -768,7 +777,16 @@ struct MySQLClientTests {
                 )
             ]
         )
-        let primary = MockConnectionSession()
+        let primary = MockConnectionSession(
+            simpleQueryResults: [
+                "SHOW MASTER STATUS": [
+                    Self.textRow([
+                        ("File", "binlog.000001"),
+                        ("Position", "157")
+                    ])
+                ]
+            ]
+        )
         let counter = ConnectionFactoryCounter()
 
         let client = MySQLClient(
@@ -795,12 +813,12 @@ struct MySQLClientTests {
             outputPath: "/tmp/sakila.sql"
         )
 
-        try await client.security.createUser(username: "ci", host: "%", password: "secret")
+        _ = try await client.security.createUser(username: "ci", host: "%", password: "secret")
         try await client.security.grant("SELECT", on: "`sakila`.*", to: "ci", host: "%")
         try await client.security.revoke("SELECT", on: "`sakila`.*", from: "ci", host: "%")
         try await client.security.createRole(name: "report_reader")
         try await client.security.dropRole(name: "report_reader")
-        try await client.security.dropUser(username: "ci", host: "%")
+        _ = try await client.security.dropUser(username: "ci", host: "%")
 
         let statementAnalysis = try await client.performance.statementAnalysis()
         let unusedIndexes = try await client.performance.unusedIndexes()
@@ -879,10 +897,37 @@ struct MySQLClientTests {
                 ],
                 "SHOW ENGINE INNODB STATUS": [
                     Self.textRow([("Status", "BUFFER POOL AND MEMORY")])
+                ],
+                """
+                SELECT * FROM sys.schema_index_statistics
+                LIMIT 50
+                """: [
+                    Self.textRow([("table_schema", "sakila"), ("index_name", "idx_actor_last_name")])
+                ],
+                """
+                SELECT * FROM sys.schema_table_statistics
+                LIMIT 50
+                """: [
+                    Self.textRow([("table_schema", "sakila"), ("table_name", "actor")])
+                ],
+                """
+                SELECT * FROM sys.waits_global_by_latency
+                LIMIT 50
+                """: [
+                    Self.textRow([("event", "wait/io/file/sql/binlog"), ("total_latency", "10 ms")])
                 ]
             ]
         )
-        let primary = MockConnectionSession()
+        let primary = MockConnectionSession(
+            simpleQueryResults: [
+                "SHOW MASTER STATUS": [
+                    Self.textRow([
+                        ("File", "binlog.000001"),
+                        ("Position", "157")
+                    ])
+                ]
+            ]
+        )
         let counter = ConnectionFactoryCounter()
 
         let client = MySQLClient(
@@ -909,6 +954,9 @@ struct MySQLClientTests {
         let topRuntime = try await client.performance.topRuntimeStatements()
         let fullTableScans = try await client.performance.fullTableScans()
         let innodbStatus = try await client.performance.innodbStatus()
+        let indexStats = try await client.performance.schemaIndexStatistics()
+        let tableStats = try await client.performance.schemaTableStatistics()
+        let waits = try await client.performance.waitsGlobalByLatency()
 
         #expect(setResult.value == "200")
         #expect(resetResult.value == nil)
@@ -916,10 +964,123 @@ struct MySQLClientTests {
         #expect(topRuntime.name == "statements_with_runtimes_in_95th_percentile")
         #expect(fullTableScans.name == "statements_with_full_table_scans")
         #expect(innodbStatus.statusText == "BUFFER POOL AND MEMORY")
+        #expect(indexStats.name == "schema_index_statistics")
+        #expect(tableStats.name == "schema_table_statistics")
+        #expect(waits.name == "waits_global_by_latency")
         #expect(await primary.simpleQueries == [
             "SET GLOBAL max_connections = 200",
             "SET GLOBAL max_connections = DEFAULT",
             "FLUSH TABLES"
+        ])
+    }
+
+    @Test
+    func metadataConvenienceSecurityMutationsAndPrimaryReplicationStatus() async throws {
+        let tablesSQL = """
+        SELECT
+            table_name,
+            table_type
+        FROM information_schema.tables
+        WHERE table_schema = ?
+        ORDER BY table_name;
+        """
+        let routinesSQL = """
+        SELECT
+            routine_schema,
+            routine_name,
+            routine_type,
+            routine_definition
+        FROM information_schema.routines
+        WHERE routine_schema = ?
+        ORDER BY routine_name;
+        """
+
+        let metadata = MockConnectionSession(
+            simpleQueryResults: [
+                "SHOW MASTER STATUS": [
+                    Self.textRow([("File", "binlog.000001"), ("Position", "1234")])
+                ]
+            ],
+            preparedQueryResults: [
+                tablesSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([("table_name", "actor"), ("table_type", "BASE TABLE")]),
+                        Self.textRow([("table_name", "actor_info"), ("table_type", "VIEW")])
+                    ],
+                    metadata: nil
+                ),
+                routinesSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("routine_schema", "sakila"),
+                            ("routine_name", "inventory_in_stock"),
+                            ("routine_type", "FUNCTION"),
+                            ("routine_definition", "RETURN 1")
+                        ]),
+                        Self.textRow([
+                            ("routine_schema", "sakila"),
+                            ("routine_name", "film_in_stock"),
+                            ("routine_type", "PROCEDURE"),
+                            ("routine_definition", "SELECT 1")
+                        ])
+                    ],
+                    metadata: nil
+                )
+            ]
+        )
+        let primary = MockConnectionSession(
+            simpleQueryResults: [
+                "SHOW MASTER STATUS": [
+                    Self.textRow([
+                        ("File", "binlog.000001"),
+                        ("Position", "157")
+                    ])
+                ]
+            ]
+        )
+        let counter = ConnectionFactoryCounter()
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+                connectionFactory: { _, _ in
+                    let index = await counter.next()
+                    return index == 1 ? metadata : primary
+                }
+            )
+        )
+
+        let tables = try await client.metadata.listTables(in: "sakila")
+        let views = try await client.metadata.listViews(in: "sakila")
+        let functions = try await client.metadata.listFunctions(in: "sakila")
+        let procedures = try await client.metadata.listProcedures(in: "sakila")
+        let created = try await client.security.createUser(username: "ops", host: "%", password: "pw")
+        let altered = try await client.security.alterUserPassword(username: "ops", host: "%", password: "pw2")
+        let locked = try await client.security.lockUser(username: "ops", host: "%")
+        let unlocked = try await client.security.unlockUser(username: "ops", host: "%")
+        try await client.security.grantRole("report_reader", to: "ops", host: "%")
+        try await client.security.revokeRole("report_reader", from: "ops", host: "%")
+        try await client.security.setDefaultRole("report_reader", for: "ops", host: "%")
+        let primaryStatus = try await client.replication.primaryStatus()
+
+        #expect(tables.map(\.name) == ["actor"])
+        #expect(views.map(\.name) == ["actor_info"])
+        #expect(functions.map(\.name) == ["inventory_in_stock"])
+        #expect(procedures.map(\.name) == ["film_in_stock"])
+        #expect(created.operation == "CREATE USER")
+        #expect(altered.operation == "ALTER USER PASSWORD")
+        #expect(locked.operation == "LOCK USER")
+        #expect(unlocked.operation == "UNLOCK USER")
+        #expect(primaryStatus?.rawValues["File"] == "binlog.000001")
+        #expect(await primary.simpleQueries == [
+            "CREATE USER 'ops'@'%' BY 'pw'",
+            "ALTER USER 'ops'@'%' IDENTIFIED BY 'pw2'",
+            "ALTER USER 'ops'@'%' ACCOUNT LOCK",
+            "ALTER USER 'ops'@'%' ACCOUNT UNLOCK",
+            "GRANT 'report_reader'@'%' TO 'ops'@'%'",
+            "REVOKE 'report_reader'@'%' FROM 'ops'@'%'",
+            "SET DEFAULT ROLE 'report_reader'@'%' TO 'ops'@'%'",
+            "SHOW MASTER STATUS"
         ])
     }
 

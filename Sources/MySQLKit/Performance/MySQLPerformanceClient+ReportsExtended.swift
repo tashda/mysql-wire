@@ -27,4 +27,34 @@ public extension MySQLPerformanceClient {
         let status = rows.first?.column("Status")?.string ?? ""
         return MySQLInnoDBStatus(statusText: status)
     }
+
+    func schemaIndexStatistics(limit: Int = 50) async throws -> MySQLPerformanceReport {
+        try await runReport(
+            """
+            SELECT * FROM sys.schema_index_statistics
+            LIMIT \(limit)
+            """,
+            name: "schema_index_statistics"
+        )
+    }
+
+    func schemaTableStatistics(limit: Int = 50) async throws -> MySQLPerformanceReport {
+        try await runReport(
+            """
+            SELECT * FROM sys.schema_table_statistics
+            LIMIT \(limit)
+            """,
+            name: "schema_table_statistics"
+        )
+    }
+
+    func waitsGlobalByLatency(limit: Int = 50) async throws -> MySQLPerformanceReport {
+        try await runReport(
+            """
+            SELECT * FROM sys.waits_global_by_latency
+            LIMIT \(limit)
+            """,
+            name: "waits_global_by_latency"
+        )
+    }
 }

@@ -63,3 +63,15 @@ public struct MySQLRoleDefinition: Sendable, Hashable {
         self.host = host
     }
 }
+
+public struct MySQLUserMutationResult: Sendable, Hashable {
+    public let username: String
+    public let host: String
+    public let operation: String
+
+    public init(username: String, host: String, operation: String) {
+        self.username = username
+        self.host = host
+        self.operation = operation
+    }
+}
