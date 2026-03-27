@@ -9,10 +9,10 @@ struct MySQLInfrastructureTests {
     func preparedStatementCacheEvictsLeastRecentlyUsed() async {
         let cache = PreparedStatementCache(capacity: 2)
 
-        await cache.touch("SELECT 1", now: Date(timeIntervalSince1970: 1))
-        await cache.touch("SELECT 2", now: Date(timeIntervalSince1970: 2))
-        await cache.touch("SELECT 1", now: Date(timeIntervalSince1970: 3))
-        await cache.touch("SELECT 3", now: Date(timeIntervalSince1970: 4))
+        await cache.touch("SELECT 1", statementName: "s1", now: Date(timeIntervalSince1970: 1))
+        await cache.touch("SELECT 2", statementName: "s2", now: Date(timeIntervalSince1970: 2))
+        await cache.touch("SELECT 1", statementName: "s1", now: Date(timeIntervalSince1970: 3))
+        await cache.touch("SELECT 3", statementName: "s3", now: Date(timeIntervalSince1970: 4))
 
         let entries = await cache.cachedStatements()
 

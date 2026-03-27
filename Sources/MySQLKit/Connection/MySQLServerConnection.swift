@@ -83,7 +83,8 @@ public actor MySQLServerConnection: Sendable {
     }
 
     public func recordPreparedStatement(_ sql: String) async {
-        await preparedStatementCache.touch(sql)
+        let statementName = "mw_stmt_\(abs(sql.hashValue))"
+        _ = await preparedStatementCache.touch(sql, statementName: statementName)
     }
 
     public func cachedPreparedStatements() async -> [PreparedStatementCache.Entry] {
@@ -96,6 +97,25 @@ public actor MySQLServerConnection: Sendable {
 
     public func failureAction(for error: any Error) -> MySQLConnectionFailureAction {
         healthPolicy.action(for: error)
+    }
+
+    public func preparedStatement(
+        for sql: String,
+        on connection: any MySQLConnectionSession
+    ) async throws -> PreparedStatementCache.Entry {
+        if let existing = await preparedStatementCache.entry(for: sql) {
+            _ = await preparedStatementCache.touch(sql, statementName: existing.statementName)
+            return existing
+        }
+
+        let statementName = "mw_stmt_fixed"
+        let escapedSQL = MySQLBindRenderer.escapeStringLiteral(sql)
+        _ = try await connection.simpleQuery("PREPARE \(statementName) FROM '\(escapedSQL)'")
+        if let evicted = await preparedStatementCache.touch(sql, statementName: statementName) {
+            _ = try? await connection.simpleQuery("DEALLOCATE PREPARE \(evicted.statementName)")
+        }
+        return await preparedStatementCache.entry(for: sql)
+            ?? PreparedStatementCache.Entry(sql: sql, statementName: statementName, lastAccessedAt: Date())
     }
 
     public func close() async {

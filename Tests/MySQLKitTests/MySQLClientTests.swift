@@ -822,6 +822,45 @@ struct MySQLClientTests {
         ])
     }
 
+    @Test
+    func preparedQueriesUsePrepareExecuteLifecycle() async throws {
+        let sql = "SELECT * FROM actor WHERE actor_id = ? AND first_name = ?"
+        let primary = MockConnectionSession(
+            simpleQueryResults: [
+                "PREPARE mw_stmt_fixed FROM 'SELECT * FROM actor WHERE actor_id = ? AND first_name = ?'": [],
+                "SET @mw_p1 = 7": [],
+                "SET @mw_p2 = 'PENELOPE'": [],
+                "EXECUTE mw_stmt_fixed USING @mw_p1, @mw_p2": [
+                    Self.textRow([
+                        ("actor_id", "7"),
+                        ("first_name", "PENELOPE")
+                    ])
+                ]
+            ]
+        )
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root"),
+                connectionFactory: { _, _ in primary }
+            )
+        )
+
+        let result = try await client.query.prepared.query(
+            sql,
+            binds: [MySQLData(int: 7), MySQLData(string: "PENELOPE")]
+        )
+        let recordedQueries = await primary.simpleQueries
+
+        #expect(result.rows.first?.column("actor_id")?.string == "7")
+        #expect(recordedQueries.count == 4)
+        #expect(recordedQueries.first == "PREPARE mw_stmt_fixed FROM 'SELECT * FROM actor WHERE actor_id = ? AND first_name = ?'")
+        #expect(recordedQueries.contains("SET @mw_p1 = '7'"))
+        #expect(recordedQueries.contains("SET @mw_p2 = 'PENELOPE'"))
+        #expect(recordedQueries.last == "EXECUTE mw_stmt_fixed USING @mw_p1, @mw_p2")
+    }
+
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
         let columnDefinitions = values.map { name, _ in columnDefinition(named: name) }
 
