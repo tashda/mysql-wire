@@ -1084,6 +1084,143 @@ struct MySQLClientTests {
         ])
     }
 
+    @Test
+    func sessionAndBulkOperationsUsePrimaryConnection() async throws {
+        let twoRowInsertSQL = "INSERT INTO `sakila`.`actor` (`actor_id`, `first_name`) VALUES (?, ?), (?, ?)"
+        let oneRowInsertSQL = "INSERT INTO `sakila`.`actor` (`actor_id`, `first_name`) VALUES (?, ?)"
+
+        let primary = MockConnectionSession(
+            databaseName: "sakila",
+            simpleQueryResults: [
+                "SELECT CURRENT_USER() AS current_user": [
+                    Self.textRow([("current_user", "root@localhost")])
+                ],
+                "SHOW SESSION VARIABLES": [
+                    Self.textRow([("Variable_name", "autocommit"), ("Value", "ON")]),
+                    Self.textRow([("Variable_name", "sql_mode"), ("Value", "STRICT_TRANS_TABLES")])
+                ],
+                "SELECT @@SESSION.transaction_isolation AS transaction_isolation": [
+                    Self.textRow([("transaction_isolation", "READ COMMITTED")])
+                ],
+                "SET SESSION `sql_mode` = 'ANSI,STRICT_TRANS_TABLES'": [],
+                "SET SESSION `optimizer_switch` = DEFAULT": [],
+                "SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE": []
+            ],
+            preparedQueryResults: [
+                "SELECT GET_LOCK(?, ?) AS lock_acquired": MySQLWireQueryResult(
+                    rows: [Self.textRow([("lock_acquired", "1")])],
+                    metadata: nil
+                ),
+                "SELECT RELEASE_LOCK(?) AS lock_released": MySQLWireQueryResult(
+                    rows: [Self.textRow([("lock_released", "1")])],
+                    metadata: nil
+                ),
+                twoRowInsertSQL: MySQLWireQueryResult(rows: [], metadata: nil),
+                oneRowInsertSQL: MySQLWireQueryResult(rows: [], metadata: nil)
+            ]
+        )
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+                connectionFactory: { _, _ in primary }
+            )
+        )
+
+        let currentUser = try await client.session.currentUser()
+        let currentDatabase = try await client.session.currentDatabase()
+        let sqlMode = try await client.session.sqlMode()
+        let filteredVariables = try await client.session.sessionVariables(named: ["sql_mode"])
+        let isolationLevel = try await client.session.transactionIsolationLevel()
+        let acquiredLock = try await client.session.acquireNamedLock("echo-refresh", timeoutSeconds: 5)
+        let releasedLock = try await client.session.releaseNamedLock("echo-refresh")
+        let updatedSQLMode = try await client.session.setSQLMode("ANSI,STRICT_TRANS_TABLES")
+        let updatedOptimizer = try await client.session.setSessionVariable(name: "optimizer_switch", value: nil)
+        try await client.session.setTransactionIsolationLevel(.serializable)
+
+        let bulkInsert = try await client.bulk.insert(
+            into: "actor",
+            schema: "sakila",
+            columns: ["actor_id", "first_name"],
+            rows: [
+                [MySQLData(int: 1), MySQLData(string: "PENELOPE")],
+                [MySQLData(int: 2), MySQLData(string: "NICK")],
+                [MySQLData(int: 3), MySQLData(string: "ED")]
+            ],
+            chunkSize: 2
+        )
+        let loadCommand = client.bulk.loadDataCommand(
+            host: "db.internal",
+            port: 3306,
+            username: "echo",
+            database: "sakila",
+            table: "actor",
+            inputPath: "/tmp/actor.csv",
+            ignoreLines: 1
+        )
+        let exportCommand = client.bulk.exportTableCommand(
+            host: "db.internal",
+            port: 3306,
+            username: "echo",
+            database: "sakila",
+            table: "actor",
+            outputPath: "/tmp/actor.sql",
+            whereClause: "actor_id > 10"
+        )
+
+        #expect(currentUser == "root@localhost")
+        #expect(currentDatabase == "sakila")
+        #expect(sqlMode == "STRICT_TRANS_TABLES")
+        #expect(filteredVariables == [MySQLSessionVariable(name: "sql_mode", value: "STRICT_TRANS_TABLES")])
+        #expect(isolationLevel == .readCommitted)
+        #expect(acquiredLock.acquired)
+        #expect(releasedLock.acquired)
+        #expect(updatedSQLMode == MySQLSessionVariable(name: "sql_mode", value: "ANSI,STRICT_TRANS_TABLES"))
+        #expect(updatedOptimizer == MySQLSessionVariable(name: "optimizer_switch", value: "DEFAULT"))
+        #expect(bulkInsert == MySQLBulkInsertResult(insertedRowCount: 3, chunksExecuted: 2))
+        #expect(loadCommand == [
+            "mysql",
+            "--host=db.internal",
+            "--port=3306",
+            "--user=echo",
+            "--database=sakila",
+            "--local-infile=1",
+            "--execute=LOAD DATA LOCAL INFILE '/tmp/actor.csv' INTO TABLE `actor` FIELDS TERMINATED BY ',' LINES TERMINATED BY '\n' IGNORE 1 LINES"
+        ])
+        #expect(exportCommand == [
+            "mysqldump",
+            "--host=db.internal",
+            "--port=3306",
+            "--user=echo",
+            "--where=actor_id > 10",
+            "--result-file=/tmp/actor.sql",
+            "sakila",
+            "actor"
+        ])
+        #expect(await primary.simpleQueries == [
+            "SELECT CURRENT_USER() AS current_user",
+            "SHOW SESSION VARIABLES",
+            "SHOW SESSION VARIABLES",
+            "SELECT @@SESSION.transaction_isolation AS transaction_isolation",
+            "SET SESSION `sql_mode` = 'ANSI,STRICT_TRANS_TABLES'",
+            "SET SESSION `optimizer_switch` = DEFAULT",
+            "SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE"
+        ])
+        let preparedQueries = await primary.preparedQueries
+        #expect(preparedQueries.map(\.sql) == [
+            "SELECT GET_LOCK(?, ?) AS lock_acquired",
+            "SELECT RELEASE_LOCK(?) AS lock_released",
+            twoRowInsertSQL,
+            oneRowInsertSQL
+        ])
+        #expect(preparedQueries.map(\.binds) == [
+            ["echo-refresh", "5"],
+            ["echo-refresh"],
+            ["1", "PENELOPE", "2", "NICK"],
+            ["3", "ED"]
+        ])
+    }
+
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
         let columnDefinitions = values.map { name, _ in columnDefinition(named: name) }
 

@@ -3,6 +3,10 @@ public extension MySQLClient {
         MySQLQueryClient(serverConnection: serverConnection)
     }
 
+    var bulk: MySQLBulkOperationClient {
+        MySQLBulkOperationClient(serverConnection: serverConnection)
+    }
+
     var metadata: MySQLMetadataClient {
         MySQLMetadataClient(serverConnection: serverConnection)
     }
@@ -13,6 +17,10 @@ public extension MySQLClient {
 
     var security: MySQLSecurityClient {
         MySQLSecurityClient(serverConnection: serverConnection)
+    }
+
+    var session: MySQLSessionClient {
+        MySQLSessionClient(serverConnection: serverConnection)
     }
 
     var performance: MySQLPerformanceClient {
