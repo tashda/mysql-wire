@@ -11,4 +11,22 @@ public extension MySQLPerformanceClient {
         }
         return MySQLExplainPlan(rows: planRows)
     }
+
+    func explainJSON(_ sql: String) async throws -> MySQLExplainJSONPlan {
+        let connection = try await serverConnection.primary()
+        let rows = try await connection.simpleQuery("EXPLAIN FORMAT=JSON \(sql)")
+        let json = rows.first?.column("EXPLAIN")?.string ?? "{}"
+        return MySQLExplainJSONPlan(json: json)
+    }
+
+    func explainAnalyze(_ sql: String) async throws -> MySQLExplainAnalyzePlan {
+        let connection = try await serverConnection.primary()
+        let rows = try await connection.simpleQuery("EXPLAIN ANALYZE \(sql)")
+        let lines = rows.compactMap { row in
+            row.columnDefinitions.first.flatMap { definition in
+                row.column(definition.name)?.string
+            }
+        }
+        return MySQLExplainAnalyzePlan(lines: lines)
+    }
 }

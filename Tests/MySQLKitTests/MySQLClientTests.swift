@@ -680,6 +680,12 @@ struct MySQLClientTests {
                         ("select_type", "SIMPLE"),
                         ("table", "actor")
                     ])
+                ],
+                "EXPLAIN FORMAT=JSON SELECT * FROM actor": [
+                    Self.textRow([("EXPLAIN", #"{"query_block":{"select_id":1,"cost_info":{"query_cost":"1.00"},"table":{"table_name":"actor","access_type":"ALL","rows_examined_per_scan":200,"rows_produced_per_join":200,"used_columns":["actor_id"]}}}"#)])
+                ],
+                "EXPLAIN ANALYZE SELECT * FROM actor": [
+                    Self.textRow([("EXPLAIN", "-> Table scan on actor  (cost=1.00 rows=200) (actual time=0.010..0.020 rows=200 loops=1)")])
                 ]
             ]
         )
@@ -720,10 +726,14 @@ struct MySQLClientTests {
         )
 
         let explain = try await client.performance.explain("SELECT * FROM actor")
+        let explainJSON = try await client.performance.explainJSON("SELECT * FROM actor")
+        let explainAnalyze = try await client.performance.explainAnalyze("SELECT * FROM actor")
         let dashboard = try await client.performance.dashboardStatus()
         let snapshot = try await client.activity.snapshot()
 
         #expect(explain.rows.first?["table"]??.description == "actor")
+        #expect(explainJSON.json.contains("\"query_block\""))
+        #expect(explainAnalyze.lines.first?.contains("Table scan on actor") == true)
         #expect(dashboard.first?.name == "Questions")
         #expect(snapshot.processes.first?.id == 7)
     }
