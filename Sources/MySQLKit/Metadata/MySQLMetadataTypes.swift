@@ -51,3 +51,117 @@ public struct MySQLColumnInfo: Sendable, Hashable {
         self.maxLength = maxLength
     }
 }
+
+public struct MySQLPrimaryKeyInfo: Sendable, Hashable {
+    public let name: String
+    public let columns: [String]
+
+    public init(name: String, columns: [String]) {
+        self.name = name
+        self.columns = columns
+    }
+}
+
+public struct MySQLIndexColumnInfo: Sendable, Hashable {
+    public enum SortOrder: String, Sendable, Hashable {
+        case ascending
+        case descending
+    }
+
+    public let name: String
+    public let position: Int
+    public let sortOrder: SortOrder
+
+    public init(name: String, position: Int, sortOrder: SortOrder) {
+        self.name = name
+        self.position = position
+        self.sortOrder = sortOrder
+    }
+}
+
+public struct MySQLIndexInfo: Sendable, Hashable {
+    public let name: String
+    public let columns: [MySQLIndexColumnInfo]
+    public let isUnique: Bool
+
+    public init(name: String, columns: [MySQLIndexColumnInfo], isUnique: Bool) {
+        self.name = name
+        self.columns = columns
+        self.isUnique = isUnique
+    }
+}
+
+public struct MySQLForeignKeyInfo: Sendable, Hashable {
+    public let name: String
+    public let columns: [String]
+    public let referencedSchema: String
+    public let referencedTable: String
+    public let referencedColumns: [String]
+    public let onUpdate: String?
+    public let onDelete: String?
+
+    public init(
+        name: String,
+        columns: [String],
+        referencedSchema: String,
+        referencedTable: String,
+        referencedColumns: [String],
+        onUpdate: String?,
+        onDelete: String?
+    ) {
+        self.name = name
+        self.columns = columns
+        self.referencedSchema = referencedSchema
+        self.referencedTable = referencedTable
+        self.referencedColumns = referencedColumns
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
+    }
+}
+
+public struct MySQLDependencyInfo: Sendable, Hashable {
+    public let name: String
+    public let baseColumns: [String]
+    public let referencedTable: String
+    public let referencedColumns: [String]
+    public let onUpdate: String?
+    public let onDelete: String?
+
+    public init(
+        name: String,
+        baseColumns: [String],
+        referencedTable: String,
+        referencedColumns: [String],
+        onUpdate: String?,
+        onDelete: String?
+    ) {
+        self.name = name
+        self.baseColumns = baseColumns
+        self.referencedTable = referencedTable
+        self.referencedColumns = referencedColumns
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
+    }
+}
+
+public struct MySQLTableStructure: Sendable, Hashable {
+    public let columns: [MySQLColumnInfo]
+    public let primaryKey: MySQLPrimaryKeyInfo?
+    public let indexes: [MySQLIndexInfo]
+    public let foreignKeys: [MySQLForeignKeyInfo]
+    public let dependencies: [MySQLDependencyInfo]
+
+    public init(
+        columns: [MySQLColumnInfo],
+        primaryKey: MySQLPrimaryKeyInfo?,
+        indexes: [MySQLIndexInfo],
+        foreignKeys: [MySQLForeignKeyInfo],
+        dependencies: [MySQLDependencyInfo]
+    ) {
+        self.columns = columns
+        self.primaryKey = primaryKey
+        self.indexes = indexes
+        self.foreignKeys = foreignKeys
+        self.dependencies = dependencies
+    }
+}

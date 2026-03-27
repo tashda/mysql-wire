@@ -8,6 +8,7 @@ public actor MySQLServerConnection: Sendable {
 
     private var primaryConnection: (any MySQLConnectionSession)?
     private var metadataConnection: (any MySQLConnectionSession)?
+    private var activityConnection: (any MySQLConnectionSession)?
 
     public init(
         configuration: MySQLConfiguration,
@@ -39,12 +40,38 @@ public actor MySQLServerConnection: Sendable {
         return connection
     }
 
+    public func activity() async throws -> any MySQLConnectionSession {
+        if let activityConnection {
+            return activityConnection
+        }
+        let connection = try await connectionFactory(configuration, logger)
+        activityConnection = connection
+        return connection
+    }
+
+    public func newDedicatedConnection() async throws -> any MySQLConnectionSession {
+        try await connectionFactory(configuration, logger)
+    }
+
+    public func cancelQuery(threadID: UInt32) async throws {
+        let connection = try await newDedicatedConnection()
+        defer {
+            Task {
+                await connection.close()
+            }
+        }
+        _ = try await connection.simpleQuery("KILL QUERY \(threadID)")
+    }
+
     public func ping() async throws {
         if let primaryConnection {
             try await primaryConnection.validate()
         }
         if let metadataConnection {
             try await metadataConnection.validate()
+        }
+        if let activityConnection {
+            try await activityConnection.validate()
         }
     }
 
@@ -56,6 +83,10 @@ public actor MySQLServerConnection: Sendable {
         if let metadataConnection {
             await metadataConnection.close()
             self.metadataConnection = nil
+        }
+        if let activityConnection {
+            await activityConnection.close()
+            self.activityConnection = nil
         }
     }
 }

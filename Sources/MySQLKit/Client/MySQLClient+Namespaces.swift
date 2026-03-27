@@ -6,4 +6,12 @@ public extension MySQLClient {
     var metadata: MySQLMetadataClient {
         MySQLMetadataClient(serverConnection: serverConnection)
     }
+
+    var admin: MySQLAdminClient {
+        MySQLAdminClient(serverConnection: serverConnection)
+    }
+
+    var security: MySQLSecurityClient {
+        MySQLSecurityClient(serverConnection: serverConnection)
+    }
 }

@@ -8,6 +8,8 @@ actor MockConnectionSession: MySQLConnectionSession {
     private(set) var simpleQueries: [String] = []
     private(set) var changedDatabases: [String] = []
     private(set) var preparedQueries: [(sql: String, binds: [String?])] = []
+    private(set) var validateCalls = 0
+    private(set) var closeCalls = 0
     private let databaseName: String?
     private let simpleQueryResults: [String: [MySQLRow]]
     private let preparedQueryResults: [String: MySQLWireQueryResult]
@@ -47,9 +49,13 @@ actor MockConnectionSession: MySQLConnectionSession {
         databaseName
     }
 
-    func validate() async throws {}
+    func validate() async throws {
+        validateCalls += 1
+    }
 
-    func close() async {}
+    func close() async {
+        closeCalls += 1
+    }
 }
 
 actor ConnectionFactoryCounter {
@@ -184,6 +190,292 @@ struct MySQLClientTests {
         #expect(definition.contains("CREATE TABLE `actor`"))
         #expect(await counter.current() == 1)
         #expect(await metadata.preparedQueries.count == 2)
+    }
+
+    @Test
+    func tableStructureAggregatesMetadataQueries() async throws {
+        let columnsSQL = """
+        SELECT
+            column_name,
+            data_type,
+            is_nullable,
+            column_key,
+            character_maximum_length
+        FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = ?
+        ORDER BY ordinal_position;
+        """
+        let primaryKeySQL = """
+        SELECT k.constraint_name, k.column_name
+        FROM information_schema.table_constraints t
+        JOIN information_schema.key_column_usage k
+          ON k.constraint_name = t.constraint_name
+         AND k.table_schema = t.table_schema
+        WHERE t.table_schema = ?
+          AND t.table_name = ?
+          AND t.constraint_type = 'PRIMARY KEY'
+        ORDER BY k.ordinal_position;
+        """
+        let indexesSQL = """
+        SELECT
+            index_name,
+            non_unique,
+            seq_in_index,
+            column_name,
+            collation
+        FROM information_schema.statistics
+        WHERE table_schema = ? AND table_name = ?
+        ORDER BY index_name, seq_in_index;
+        """
+        let foreignKeysSQL = """
+        SELECT
+            rc.constraint_name,
+            kcu.column_name,
+            kcu.referenced_table_schema,
+            kcu.referenced_table_name,
+            kcu.referenced_column_name,
+            rc.update_rule,
+            rc.delete_rule,
+            kcu.ordinal_position
+        FROM information_schema.referential_constraints rc
+        JOIN information_schema.key_column_usage kcu
+          ON rc.constraint_name = kcu.constraint_name
+         AND rc.constraint_schema = kcu.constraint_schema
+        WHERE rc.constraint_schema = ?
+          AND rc.table_name = ?
+        ORDER BY rc.constraint_name, kcu.ordinal_position;
+        """
+        let dependenciesSQL = """
+        SELECT
+            kcu.constraint_name,
+            kcu.column_name,
+            kcu.referenced_table_name,
+            kcu.referenced_column_name,
+            rc.update_rule,
+            rc.delete_rule
+        FROM information_schema.key_column_usage kcu
+        JOIN information_schema.referential_constraints rc
+          ON rc.constraint_name = kcu.constraint_name
+         AND rc.constraint_schema = kcu.constraint_schema
+        WHERE kcu.referenced_table_schema = ?
+          AND kcu.referenced_table_name = ?
+        ORDER BY kcu.constraint_name, kcu.ordinal_position;
+        """
+
+        let metadata = MockConnectionSession(
+            databaseName: "sakila",
+            preparedQueryResults: [
+                columnsSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("column_name", "actor_id"),
+                            ("data_type", "int"),
+                            ("is_nullable", "NO"),
+                            ("column_key", "PRI"),
+                            ("character_maximum_length", nil)
+                        ])
+                    ],
+                    metadata: nil
+                ),
+                primaryKeySQL: MySQLWireQueryResult(
+                    rows: [Self.textRow([("constraint_name", "PRIMARY"), ("column_name", "actor_id")])],
+                    metadata: nil
+                ),
+                indexesSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("index_name", "idx_last_name"),
+                            ("non_unique", "1"),
+                            ("seq_in_index", "1"),
+                            ("column_name", "last_name"),
+                            ("collation", "A")
+                        ])
+                    ],
+                    metadata: nil
+                ),
+                foreignKeysSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("constraint_name", "fk_actor_film"),
+                            ("column_name", "actor_id"),
+                            ("referenced_table_schema", "sakila"),
+                            ("referenced_table_name", "film_actor"),
+                            ("referenced_column_name", "actor_id"),
+                            ("update_rule", "CASCADE"),
+                            ("delete_rule", "CASCADE"),
+                            ("ordinal_position", "1")
+                        ])
+                    ],
+                    metadata: nil
+                ),
+                dependenciesSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("constraint_name", "fk_film_actor_actor"),
+                            ("column_name", "actor_id"),
+                            ("referenced_table_name", "film_actor"),
+                            ("referenced_column_name", "actor_id"),
+                            ("update_rule", "CASCADE"),
+                            ("delete_rule", "CASCADE")
+                        ])
+                    ],
+                    metadata: nil
+                )
+            ]
+        )
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+                logger: Logger(label: "tests.mysql-kit.structure"),
+                connectionFactory: { _, _ in metadata }
+            )
+        )
+
+        let structure = try await client.metadata.tableStructure(for: "actor", schema: "sakila")
+
+        #expect(structure.columns.map(\.name) == ["actor_id"])
+        #expect(structure.primaryKey?.name == "PRIMARY")
+        #expect(structure.indexes.map(\.name) == ["idx_last_name"])
+        #expect(structure.foreignKeys.map(\.name) == ["fk_actor_film"])
+        #expect(structure.dependencies.map(\.name) == ["fk_film_actor_actor"])
+        #expect(await metadata.preparedQueries.count == 5)
+    }
+
+    @Test
+    func adminUsesActivityAndDedicatedConnections() async throws {
+        let primary = MockConnectionSession(
+            simpleQueryResults: [
+                "ANALYZE TABLE `sakila`.`actor`": [Self.textRow([("Msg_text", "OK")])]
+            ]
+        )
+        let activity = MockConnectionSession(
+            preparedQueryResults: [
+                "SHOW GLOBAL STATUS": MySQLWireQueryResult(
+                    rows: [Self.textRow([("Variable_name", "Threads_connected"), ("Value", "12")])],
+                    metadata: nil
+                ),
+                "SHOW GLOBAL VARIABLES LIKE ?": MySQLWireQueryResult(
+                    rows: [Self.textRow([("Variable_name", "max_connections"), ("Value", "151")])],
+                    metadata: nil
+                ),
+                "SHOW FULL PROCESSLIST": MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("Id", "42"),
+                            ("User", "echo"),
+                            ("Host", "localhost:51234"),
+                            ("db", "sakila"),
+                            ("Command", "Query"),
+                            ("Time", "3"),
+                            ("State", "executing"),
+                            ("Info", "SELECT 1")
+                        ])
+                    ],
+                    metadata: nil
+                )
+            ]
+        )
+        let cancel = MockConnectionSession()
+        let counter = ConnectionFactoryCounter()
+
+        let serverConnection = MySQLServerConnection(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            logger: Logger(label: "tests.mysql-kit.admin"),
+            connectionFactory: { _, _ in
+                let index = await counter.next()
+                switch index {
+                case 1: return activity
+                case 2: return cancel
+                default: return primary
+                }
+            }
+        )
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: serverConnection
+        )
+
+        let status = try await client.admin.globalStatus()
+        let variables = try await client.admin.globalVariables(named: "max_connections")
+        let processes = try await client.admin.processList()
+        try await client.admin.killQuery(threadID: 42)
+        let maintenance = try await client.admin.analyzeTable(schema: "sakila", table: "actor")
+        try await serverConnection.ping()
+        await serverConnection.close()
+
+        #expect(status.first?.name == "Threads_connected")
+        #expect(variables.first?.value == "151")
+        #expect(processes.first?.id == 42)
+        #expect(maintenance.messages == ["OK"])
+        #expect(await cancel.simpleQueries == ["KILL QUERY 42"])
+        #expect(await cancel.closeCalls == 1)
+        #expect(await primary.validateCalls == 1)
+        #expect(await activity.validateCalls == 1)
+        #expect(await primary.closeCalls == 1)
+        #expect(await activity.closeCalls == 1)
+    }
+
+    @Test
+    func securityReturnsUsersAndGrants() async throws {
+        let listUsersSQL = """
+        SELECT
+            User,
+            Host,
+            plugin,
+            account_locked,
+            password_expired
+        FROM mysql.user
+        ORDER BY User, Host;
+        """
+
+        let metadata = MockConnectionSession(
+            simpleQueryResults: [
+                "SHOW GRANTS FOR 'echo'@'localhost'": [
+                    Self.textRow([("Grants for echo@localhost", "GRANT ALL PRIVILEGES ON *.* TO `echo`@`localhost`")])
+                ]
+            ],
+            preparedQueryResults: [
+                listUsersSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("User", "echo"),
+                            ("Host", "localhost"),
+                            ("plugin", "caching_sha2_password"),
+                            ("account_locked", "N"),
+                            ("password_expired", "N")
+                        ]),
+                        Self.textRow([
+                            ("User", "reporter"),
+                            ("Host", "%"),
+                            ("plugin", "mysql_native_password"),
+                            ("account_locked", "Y"),
+                            ("password_expired", "N")
+                        ])
+                    ],
+                    metadata: nil
+                )
+            ]
+        )
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root"),
+                logger: Logger(label: "tests.mysql-kit.security"),
+                connectionFactory: { _, _ in metadata }
+            )
+        )
+
+        let users = try await client.security.listUsers()
+        let grants = try await client.security.showGrants(for: "echo", host: "localhost")
+
+        #expect(users.map(\.username) == ["echo", "reporter"])
+        #expect(users.last?.accountLocked == true)
+        #expect(grants == ["GRANT ALL PRIVILEGES ON *.* TO `echo`@`localhost`"])
+        #expect(await metadata.preparedQueries.count == 1)
+        #expect(await metadata.simpleQueries == ["SHOW GRANTS FOR 'echo'@'localhost'"])
     }
 
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
