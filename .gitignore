@@ -6,3 +6,27 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+
+# AI agent configs and caches
+.claude/
+.codex_cache/
+AGENT.md
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+agent.md
+agents.md
+gemini.md
+claude.md
+
+# AI agent outputs
+*_ANALYSIS.md
+*_PLAN.md
+*_GAP.md
+*_REPORT.md
+*_SPEC.md
+*_TODO.md
+*_VIOLATIONS.md
+*_FIXTURES.md
+.planning/
+TASKS/
