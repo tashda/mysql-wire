@@ -193,6 +193,67 @@ struct MySQLClientTests {
     }
 
     @Test
+    func securityRolesReturnTypedResults() async throws {
+        let rolesSQL = """
+        SELECT
+            FROM_USER,
+            FROM_HOST
+        FROM mysql.role_edges
+        GROUP BY FROM_USER, FROM_HOST
+        ORDER BY FROM_USER, FROM_HOST;
+        """
+        let assignmentsSQL = """
+        SELECT
+            FROM_USER,
+            FROM_HOST,
+            TO_USER,
+            TO_HOST
+        FROM mysql.role_edges
+        ORDER BY TO_USER, FROM_USER;
+        """
+
+        let metadata = MockConnectionSession(
+            preparedQueryResults: [
+                rolesSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([("FROM_USER", "app_readonly"), ("FROM_HOST", "%")]),
+                        Self.textRow([("FROM_USER", "app_admin"), ("FROM_HOST", "%")])
+                    ],
+                    metadata: nil
+                ),
+                assignmentsSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("FROM_USER", "app_readonly"),
+                            ("FROM_HOST", "%"),
+                            ("TO_USER", "echo"),
+                            ("TO_HOST", "%")
+                        ])
+                    ],
+                    metadata: nil
+                )
+            ]
+        )
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root"),
+                logger: Logger(label: "tests.mysql-kit.security"),
+                connectionFactory: { _, _ in metadata }
+            )
+        )
+
+        let roles = try await client.security.listRoles()
+        let assignments = try await client.security.listRoleAssignments()
+
+        #expect(roles.map(\.name) == ["app_readonly", "app_admin"])
+        #expect(assignments.count == 1)
+        #expect(assignments.first?.roleName == "app_readonly")
+        #expect(assignments.first?.grantee == "'echo'@'%'")
+    }
+
+    @Test
     func tableStructureAggregatesMetadataQueries() async throws {
         let columnsSQL = """
         SELECT
