@@ -62,7 +62,8 @@ public extension MySQLMetadataClient {
             non_unique,
             seq_in_index,
             column_name,
-            collation
+            collation,
+            index_type
         FROM information_schema.statistics
         WHERE table_schema = ? AND table_name = ?
         ORDER BY index_name, seq_in_index;
@@ -75,6 +76,7 @@ public extension MySQLMetadataClient {
         )
 
         var grouped: [String: (isUnique: Bool, columns: [MySQLIndexColumnInfo])] = [:]
+        var indexTypes: [String: String] = [:]
         for row in result.rows {
             guard
                 let name = row.column("index_name")?.string,
@@ -87,11 +89,16 @@ public extension MySQLMetadataClient {
             let position = row.column("seq_in_index")?.string.flatMap(Int.init) ?? 0
             let sortOrder: MySQLIndexColumnInfo.SortOrder =
                 row.column("collation")?.string == "D" ? .descending : .ascending
+            let indexType = row.column("index_type")?.string
 
             var entry = grouped[name] ?? (true, [])
             entry.isUnique = entry.isUnique && isUnique
             entry.columns.append(MySQLIndexColumnInfo(name: columnName, position: position, sortOrder: sortOrder))
             grouped[name] = entry
+
+            if let indexType {
+                indexTypes[name] = indexType
+            }
         }
 
         return grouped.compactMap { name, value in
@@ -101,7 +108,8 @@ public extension MySQLMetadataClient {
             return MySQLIndexInfo(
                 name: name,
                 columns: value.columns.sorted { $0.position < $1.position },
-                isUnique: value.isUnique
+                isUnique: value.isUnique,
+                indexType: indexTypes[name]
             )
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }

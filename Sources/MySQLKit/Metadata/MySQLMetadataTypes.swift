@@ -33,22 +33,43 @@ public struct MySQLSchemaObject: Sendable, Hashable {
 public struct MySQLColumnInfo: Sendable, Hashable {
     public let name: String
     public let dataType: String
+    public let fullDataType: String
     public let isNullable: Bool
     public let isPrimaryKey: Bool
     public let maxLength: Int?
+    public let defaultValue: String?
+    public let generationExpression: String?
+    public let isAutoIncrement: Bool
+    public let collation: String?
+    public let characterSet: String?
+    public let ordinalPosition: Int
 
     public init(
         name: String,
         dataType: String,
+        fullDataType: String,
         isNullable: Bool,
         isPrimaryKey: Bool,
-        maxLength: Int?
+        maxLength: Int?,
+        defaultValue: String?,
+        generationExpression: String?,
+        isAutoIncrement: Bool,
+        collation: String?,
+        characterSet: String?,
+        ordinalPosition: Int
     ) {
         self.name = name
         self.dataType = dataType
+        self.fullDataType = fullDataType
         self.isNullable = isNullable
         self.isPrimaryKey = isPrimaryKey
         self.maxLength = maxLength
+        self.defaultValue = defaultValue
+        self.generationExpression = generationExpression
+        self.isAutoIncrement = isAutoIncrement
+        self.collation = collation
+        self.characterSet = characterSet
+        self.ordinalPosition = ordinalPosition
     }
 }
 
@@ -83,11 +104,13 @@ public struct MySQLIndexInfo: Sendable, Hashable {
     public let name: String
     public let columns: [MySQLIndexColumnInfo]
     public let isUnique: Bool
+    public let indexType: String?
 
-    public init(name: String, columns: [MySQLIndexColumnInfo], isUnique: Bool) {
+    public init(name: String, columns: [MySQLIndexColumnInfo], isUnique: Bool, indexType: String? = nil) {
         self.name = name
         self.columns = columns
         self.isUnique = isUnique
+        self.indexType = indexType
     }
 }
 

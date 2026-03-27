@@ -117,9 +117,16 @@ struct MySQLClientTests {
         SELECT
             column_name,
             data_type,
+            column_type,
             is_nullable,
             column_key,
-            character_maximum_length
+            character_maximum_length,
+            column_default,
+            generation_expression,
+            extra,
+            collation_name,
+            character_set_name,
+            ordinal_position
         FROM information_schema.columns
         WHERE table_schema = ? AND table_name = ?
         ORDER BY ordinal_position;
@@ -148,16 +155,30 @@ struct MySQLClientTests {
                         Self.textRow([
                             ("column_name", "actor_id"),
                             ("data_type", "int"),
+                            ("column_type", "int"),
                             ("is_nullable", "NO"),
                             ("column_key", "PRI"),
-                            ("character_maximum_length", nil)
+                            ("character_maximum_length", nil),
+                            ("column_default", nil),
+                            ("generation_expression", nil),
+                            ("extra", "auto_increment"),
+                            ("collation_name", nil),
+                            ("character_set_name", nil),
+                            ("ordinal_position", "1")
                         ]),
                         Self.textRow([
                             ("column_name", "first_name"),
                             ("data_type", "varchar"),
+                            ("column_type", "varchar(45)"),
                             ("is_nullable", "NO"),
                             ("column_key", ""),
-                            ("character_maximum_length", "45")
+                            ("character_maximum_length", "45"),
+                            ("column_default", nil),
+                            ("generation_expression", nil),
+                            ("extra", ""),
+                            ("collation_name", "utf8mb4_0900_ai_ci"),
+                            ("character_set_name", "utf8mb4"),
+                            ("ordinal_position", "2")
                         ])
                     ],
                     metadata: nil
@@ -186,7 +207,10 @@ struct MySQLClientTests {
         #expect(objects.map(\.kind) == [.table, .view])
         #expect(columns.map(\.name) == ["actor_id", "first_name"])
         #expect(columns.first?.isPrimaryKey == true)
+        #expect(columns.first?.isAutoIncrement == true)
+        #expect(columns.last?.fullDataType == "varchar(45)")
         #expect(columns.last?.maxLength == 45)
+        #expect(columns.last?.collation == "utf8mb4_0900_ai_ci")
         #expect(definition.contains("CREATE TABLE `actor`"))
         #expect(await counter.current() == 1)
         #expect(await metadata.preparedQueries.count == 2)
@@ -259,9 +283,16 @@ struct MySQLClientTests {
         SELECT
             column_name,
             data_type,
+            column_type,
             is_nullable,
             column_key,
-            character_maximum_length
+            character_maximum_length,
+            column_default,
+            generation_expression,
+            extra,
+            collation_name,
+            character_set_name,
+            ordinal_position
         FROM information_schema.columns
         WHERE table_schema = ? AND table_name = ?
         ORDER BY ordinal_position;
@@ -283,7 +314,8 @@ struct MySQLClientTests {
             non_unique,
             seq_in_index,
             column_name,
-            collation
+            collation,
+            index_type
         FROM information_schema.statistics
         WHERE table_schema = ? AND table_name = ?
         ORDER BY index_name, seq_in_index;
@@ -331,9 +363,16 @@ struct MySQLClientTests {
                         Self.textRow([
                             ("column_name", "actor_id"),
                             ("data_type", "int"),
+                            ("column_type", "int"),
                             ("is_nullable", "NO"),
                             ("column_key", "PRI"),
-                            ("character_maximum_length", nil)
+                            ("character_maximum_length", nil),
+                            ("column_default", nil),
+                            ("generation_expression", nil),
+                            ("extra", "auto_increment"),
+                            ("collation_name", nil),
+                            ("character_set_name", nil),
+                            ("ordinal_position", "1")
                         ])
                     ],
                     metadata: nil
@@ -349,7 +388,8 @@ struct MySQLClientTests {
                             ("non_unique", "1"),
                             ("seq_in_index", "1"),
                             ("column_name", "last_name"),
-                            ("collation", "A")
+                            ("collation", "A"),
+                            ("index_type", "BTREE")
                         ])
                     ],
                     metadata: nil
@@ -397,8 +437,10 @@ struct MySQLClientTests {
         let structure = try await client.metadata.tableStructure(for: "actor", schema: "sakila")
 
         #expect(structure.columns.map(\.name) == ["actor_id"])
+        #expect(structure.columns.first?.isAutoIncrement == true)
         #expect(structure.primaryKey?.name == "PRIMARY")
         #expect(structure.indexes.map(\.name) == ["idx_last_name"])
+        #expect(structure.indexes.first?.indexType == "BTREE")
         #expect(structure.foreignKeys.map(\.name) == ["fk_actor_film"])
         #expect(structure.dependencies.map(\.name) == ["fk_film_actor_actor"])
         #expect(await metadata.preparedQueries.count == 5)
