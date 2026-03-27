@@ -55,12 +55,13 @@ public actor MySQLServerConnection: Sendable {
 
     public func cancelQuery(threadID: UInt32) async throws {
         let connection = try await newDedicatedConnection()
-        defer {
-            Task {
-                await connection.close()
-            }
+        do {
+            _ = try await connection.simpleQuery("KILL QUERY \(threadID)")
+            await connection.close()
+        } catch {
+            await connection.close()
+            throw error
         }
-        _ = try await connection.simpleQuery("KILL QUERY \(threadID)")
     }
 
     public func ping() async throws {

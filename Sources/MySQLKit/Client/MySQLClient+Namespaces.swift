@@ -14,4 +14,12 @@ public extension MySQLClient {
     var security: MySQLSecurityClient {
         MySQLSecurityClient(serverConnection: serverConnection)
     }
+
+    var performance: MySQLPerformanceClient {
+        MySQLPerformanceClient(serverConnection: serverConnection)
+    }
+
+    var activity: MySQLActivityClient {
+        MySQLActivityClient(serverConnection: serverConnection)
+    }
 }

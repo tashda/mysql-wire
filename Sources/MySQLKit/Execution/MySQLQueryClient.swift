@@ -17,4 +17,8 @@ public struct MySQLQueryClient: Sendable {
         let connection = try await serverConnection.primary()
         return try await connection.stream(sql)
     }
+
+    var transaction: MySQLTransactionClient {
+        MySQLTransactionClient(serverConnection: serverConnection)
+    }
 }

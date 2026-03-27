@@ -478,6 +478,93 @@ struct MySQLClientTests {
         #expect(await metadata.simpleQueries == ["SHOW GRANTS FOR 'echo'@'localhost'"])
     }
 
+    @Test
+    func transactionClientUsesPrimaryConnection() async throws {
+        let primary = MockConnectionSession()
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root"),
+                logger: Logger(label: "tests.mysql-kit.transaction"),
+                connectionFactory: { _, _ in primary }
+            )
+        )
+
+        try await client.query.transaction.begin()
+        try await client.query.transaction.commit()
+        do {
+            _ = try await client.query.transaction.withTransaction {
+                struct Expected: Error {}
+                throw Expected()
+            }
+        } catch {}
+
+        #expect(await primary.simpleQueries == [
+            "START TRANSACTION",
+            "COMMIT",
+            "START TRANSACTION",
+            "ROLLBACK"
+        ])
+    }
+
+    @Test
+    func activityAndPerformanceUseExpectedSurfaces() async throws {
+        let primary = MockConnectionSession(
+            simpleQueryResults: [
+                "EXPLAIN SELECT * FROM actor": [
+                    Self.textRow([
+                        ("id", "1"),
+                        ("select_type", "SIMPLE"),
+                        ("table", "actor")
+                    ])
+                ]
+            ]
+        )
+        let activity = MockConnectionSession(
+            preparedQueryResults: [
+                "SHOW FULL PROCESSLIST": MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("Id", "7"),
+                            ("User", "echo"),
+                            ("Host", "localhost:1234"),
+                            ("db", "sakila"),
+                            ("Command", "Query"),
+                            ("Time", "1"),
+                            ("State", "running"),
+                            ("Info", "SELECT * FROM actor")
+                        ])
+                    ],
+                    metadata: nil
+                ),
+                "SHOW GLOBAL STATUS": MySQLWireQueryResult(
+                    rows: [Self.textRow([("Variable_name", "Questions"), ("Value", "99")])],
+                    metadata: nil
+                )
+            ]
+        )
+        let counter = ConnectionFactoryCounter()
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root"),
+                logger: Logger(label: "tests.mysql-kit.activity"),
+                connectionFactory: { _, _ in
+                    let index = await counter.next()
+                    return index == 1 ? primary : activity
+                }
+            )
+        )
+
+        let explain = try await client.performance.explain("SELECT * FROM actor")
+        let dashboard = try await client.performance.dashboardStatus()
+        let snapshot = try await client.activity.snapshot()
+
+        #expect(explain.rows.first?["table"]??.description == "actor")
+        #expect(dashboard.first?.name == "Questions")
+        #expect(snapshot.processes.first?.id == 7)
+    }
+
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
         let columnDefinitions = values.map { name, _ in columnDefinition(named: name) }
 
