@@ -737,6 +737,91 @@ struct MySQLClientTests {
         #expect(replicaStatus?.rawValues["Replica_IO_Running"]??.description == "Yes")
     }
 
+    @Test
+    func adminMutationSecurityMutationAndPerformanceReports() async throws {
+        let activity = MockConnectionSession(
+            simpleQueryResults: [
+                "SELECT * FROM mysql.general_log ORDER BY event_time DESC LIMIT 100": [
+                    Self.textRow([("event_time", "2026-03-27 08:00:00"), ("argument", "SELECT 1")])
+                ],
+                """
+                SELECT * FROM sys.statement_analysis
+                ORDER BY avg_latency DESC
+                LIMIT 10
+                """: [
+                    Self.textRow([("query", "SELECT * FROM actor"), ("avg_latency", "10 ms")])
+                ],
+                """
+                SELECT * FROM sys.schema_unused_indexes
+                LIMIT 50
+                """: [
+                    Self.textRow([("object_schema", "sakila"), ("index_name", "idx_old")])
+                ]
+            ],
+            preparedQueryResults: [
+                "SHOW GLOBAL VARIABLES": MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([("Variable_name", "general_log_file"), ("Value", "/var/log/mysql/general.log")]),
+                        Self.textRow([("Variable_name", "log_output"), ("Value", "TABLE")])
+                    ],
+                    metadata: nil
+                )
+            ]
+        )
+        let primary = MockConnectionSession()
+        let counter = ConnectionFactoryCounter()
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+                logger: Logger(label: "tests.mysql-kit.mutation"),
+                connectionFactory: { _, _ in
+                    let index = await counter.next()
+                    return index == 1 ? primary : activity
+                }
+            )
+        )
+
+        try await client.admin.renameTable(schema: "sakila", from: "actor_old", to: "actor_new")
+        try await client.admin.dropTable(schema: "sakila", name: "actor_tmp")
+        let logDestinations = try await client.admin.logDestinations()
+        let generalLog = try await client.admin.readTableLog(named: "general_log")
+        let backupCommand = client.admin.backupCommand(
+            host: "db.internal",
+            port: 3307,
+            username: "echo",
+            database: "sakila",
+            outputPath: "/tmp/sakila.sql"
+        )
+
+        try await client.security.createUser(username: "ci", host: "%", password: "secret")
+        try await client.security.grant("SELECT", on: "`sakila`.*", to: "ci", host: "%")
+        try await client.security.revoke("SELECT", on: "`sakila`.*", from: "ci", host: "%")
+        try await client.security.createRole(name: "report_reader")
+        try await client.security.dropRole(name: "report_reader")
+        try await client.security.dropUser(username: "ci", host: "%")
+
+        let statementAnalysis = try await client.performance.statementAnalysis()
+        let unusedIndexes = try await client.performance.unusedIndexes()
+
+        #expect(logDestinations.map(\.kind) == ["general_log_file", "log_output"])
+        #expect(generalLog.first?["argument"]??.description == "SELECT 1")
+        #expect(backupCommand.first == "mysqldump")
+        #expect(statementAnalysis.name == "statement_analysis")
+        #expect(unusedIndexes.name == "schema_unused_indexes")
+        #expect(await primary.simpleQueries == [
+            "RENAME TABLE `sakila`.`actor_old` TO `sakila`.`actor_new`",
+            "DROP TABLE IF EXISTS `sakila`.`actor_tmp`",
+            "CREATE USER 'ci'@'%' BY 'secret'",
+            "GRANT SELECT ON `sakila`.* TO 'ci'@'%'",
+            "REVOKE SELECT ON `sakila`.* FROM 'ci'@'%'",
+            "CREATE ROLE 'report_reader'@'%'",
+            "DROP ROLE 'report_reader'@'%'",
+            "DROP USER IF EXISTS 'ci'@'%'"
+        ])
+    }
+
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
         let columnDefinitions = values.map { name, _ in columnDefinition(named: name) }
 

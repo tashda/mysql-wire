@@ -53,3 +53,13 @@ public struct MySQLPrivilegeGrant: Sendable, Hashable {
         self.isGrantable = isGrantable
     }
 }
+
+public struct MySQLRoleDefinition: Sendable, Hashable {
+    public let name: String
+    public let host: String
+
+    public init(name: String, host: String) {
+        self.name = name
+        self.host = host
+    }
+}

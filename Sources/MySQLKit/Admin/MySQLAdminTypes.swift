@@ -58,3 +58,13 @@ public struct MySQLMaintenanceResult: Sendable, Hashable {
         self.messages = messages
     }
 }
+
+public struct MySQLLogDestination: Sendable, Hashable {
+    public let kind: String
+    public let value: String
+
+    public init(kind: String, value: String) {
+        self.kind = kind
+        self.value = value
+    }
+}
