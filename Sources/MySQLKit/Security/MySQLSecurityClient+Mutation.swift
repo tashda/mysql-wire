@@ -49,10 +49,12 @@ public extension MySQLSecurityClient {
         _ privilege: String,
         on object: String,
         to username: String,
-        host: String
+        host: String,
+        withGrantOption: Bool = false
     ) async throws {
+        let grantOptionClause = withGrantOption ? " WITH GRANT OPTION" : ""
         try await executeSecurityStatement(
-            "GRANT \(privilege) ON \(object) TO '\(escapedLiteral(username))'@'\(escapedLiteral(host))'"
+            "GRANT \(privilege) ON \(object) TO '\(escapedLiteral(username))'@'\(escapedLiteral(host))'\(grantOptionClause)"
         )
     }
 
