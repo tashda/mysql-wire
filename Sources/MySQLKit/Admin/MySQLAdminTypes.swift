@@ -84,7 +84,11 @@ public struct MySQLDumpOptions: Sendable, Hashable {
     public let includeTriggers: Bool
     public let includeEvents: Bool
     public let includeData: Bool
+    public let includeSchema: Bool
     public let singleTransaction: Bool
+    public let lockTables: Bool
+    public let compressConnection: Bool
+    public let useExtendedInsert: Bool
     public let whereClause: String?
     public let tables: [String]
 
@@ -93,7 +97,11 @@ public struct MySQLDumpOptions: Sendable, Hashable {
         includeTriggers: Bool = true,
         includeEvents: Bool = true,
         includeData: Bool = true,
+        includeSchema: Bool = true,
         singleTransaction: Bool = true,
+        lockTables: Bool = false,
+        compressConnection: Bool = false,
+        useExtendedInsert: Bool = true,
         whereClause: String? = nil,
         tables: [String] = []
     ) {
@@ -101,7 +109,11 @@ public struct MySQLDumpOptions: Sendable, Hashable {
         self.includeTriggers = includeTriggers
         self.includeEvents = includeEvents
         self.includeData = includeData
+        self.includeSchema = includeSchema
         self.singleTransaction = singleTransaction
+        self.lockTables = lockTables
+        self.compressConnection = compressConnection
+        self.useExtendedInsert = useExtendedInsert
         self.whereClause = whereClause
         self.tables = tables
     }

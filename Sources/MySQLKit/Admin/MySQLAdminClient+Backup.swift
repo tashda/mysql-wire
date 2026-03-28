@@ -35,6 +35,12 @@ public extension MySQLAdminClient {
         if options.singleTransaction {
             command.append("--single-transaction")
         }
+        if options.lockTables {
+            command.append("--lock-tables")
+        }
+        if options.compressConnection {
+            command.append("--compress")
+        }
         if options.includeRoutines {
             command.append("--routines")
         }
@@ -46,6 +52,12 @@ public extension MySQLAdminClient {
         }
         if !options.includeData {
             command.append("--no-data")
+        }
+        if !options.includeSchema {
+            command.append("--no-create-info")
+        }
+        if !options.useExtendedInsert {
+            command.append("--skip-extended-insert")
         }
         if let whereClause = options.whereClause, !whereClause.isEmpty {
             command.append("--where=\(whereClause)")
