@@ -1599,6 +1599,46 @@ struct MySQLClientTests {
         ])
     }
 
+    @Test
+    func performanceReportHelpersUseExpectedStatements() async throws {
+        let activity = MockConnectionSession(
+            simpleQueryResults: [
+                "SELECT * FROM sys.memory_global_by_current_bytes\nLIMIT 50": [
+                    Self.textRow([
+                        ("event_name", "memory/sql/THD::main_mem_root"),
+                        ("current_alloc", "1024")
+                    ])
+                ],
+                "SELECT * FROM sys.io_global_by_file_by_bytes\nLIMIT 50": [
+                    Self.textRow([
+                        ("file", "ibdata1"),
+                        ("total", "4096")
+                    ])
+                ]
+            ]
+        )
+
+        let client = MySQLClient(
+            configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+            serverConnection: MySQLServerConnection(
+                configuration: MySQLConfiguration(host: "localhost", username: "root", database: "sakila"),
+                connectionFactory: { _, _ in activity }
+            )
+        )
+
+        let memory = try await client.performance.memoryGlobalByCurrentBytes()
+        let io = try await client.performance.ioGlobalByFileByBytes()
+
+        #expect(memory.name == "memory_global_by_current_bytes")
+        #expect((memory.rows.first?["event_name"] ?? "") == "memory/sql/THD::main_mem_root")
+        #expect(io.name == "io_global_by_file_by_bytes")
+        #expect((io.rows.first?["file"] ?? "") == "ibdata1")
+        #expect(await activity.simpleQueries == [
+            "SELECT * FROM sys.memory_global_by_current_bytes\nLIMIT 50",
+            "SELECT * FROM sys.io_global_by_file_by_bytes\nLIMIT 50"
+        ])
+    }
+
     private static func textRow(_ values: [(String, String?)]) -> MySQLRow {
         let columnDefinitions = values.map { name, _ in columnDefinition(named: name) }
 

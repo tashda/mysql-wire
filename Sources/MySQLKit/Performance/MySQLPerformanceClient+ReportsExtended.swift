@@ -77,4 +77,24 @@ public extension MySQLPerformanceClient {
             name: "host_summary"
         )
     }
+
+    func memoryGlobalByCurrentBytes(limit: Int = 50) async throws -> MySQLPerformanceReport {
+        try await runReport(
+            """
+            SELECT * FROM sys.memory_global_by_current_bytes
+            LIMIT \(limit)
+            """,
+            name: "memory_global_by_current_bytes"
+        )
+    }
+
+    func ioGlobalByFileByBytes(limit: Int = 50) async throws -> MySQLPerformanceReport {
+        try await runReport(
+            """
+            SELECT * FROM sys.io_global_by_file_by_bytes
+            LIMIT \(limit)
+            """,
+            name: "io_global_by_file_by_bytes"
+        )
+    }
 }
