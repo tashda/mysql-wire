@@ -189,6 +189,40 @@ public struct MySQLTableStructure: Sendable, Hashable {
     }
 }
 
+public struct MySQLTableOptionsInfo: Sendable, Hashable {
+    public let engine: String?
+    public let characterSet: String?
+    public let collation: String?
+    public let autoIncrement: Int?
+    public let rowFormat: String?
+    public let comment: String?
+    public let estimatedRowCount: Int64?
+    public let dataLength: Int64?
+    public let indexLength: Int64?
+
+    public init(
+        engine: String?,
+        characterSet: String?,
+        collation: String?,
+        autoIncrement: Int?,
+        rowFormat: String?,
+        comment: String?,
+        estimatedRowCount: Int64?,
+        dataLength: Int64?,
+        indexLength: Int64?
+    ) {
+        self.engine = engine
+        self.characterSet = characterSet
+        self.collation = collation
+        self.autoIncrement = autoIncrement
+        self.rowFormat = rowFormat
+        self.comment = comment
+        self.estimatedRowCount = estimatedRowCount
+        self.dataLength = dataLength
+        self.indexLength = indexLength
+    }
+}
+
 public struct MySQLRoutineInfo: Sendable, Hashable {
     public let schema: String
     public let name: String

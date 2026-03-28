@@ -131,6 +131,20 @@ struct MySQLClientTests {
         WHERE table_schema = ? AND table_name = ?
         ORDER BY ordinal_position;
         """
+        let tableOptionsSQL = """
+        SELECT
+            engine,
+            SUBSTRING_INDEX(table_collation, '_', 1) AS character_set_name,
+            table_collation,
+            auto_increment,
+            row_format,
+            table_comment,
+            table_rows,
+            data_length,
+            index_length
+        FROM information_schema.tables
+        WHERE table_schema = ? AND table_name = ?;
+        """
 
         let metadata = MockConnectionSession(
             databaseName: "sakila",
@@ -182,6 +196,22 @@ struct MySQLClientTests {
                         ])
                     ],
                     metadata: nil
+                ),
+                tableOptionsSQL: MySQLWireQueryResult(
+                    rows: [
+                        Self.textRow([
+                            ("engine", "InnoDB"),
+                            ("character_set_name", "utf8mb4"),
+                            ("table_collation", "utf8mb4_0900_ai_ci"),
+                            ("auto_increment", "201"),
+                            ("row_format", "Dynamic"),
+                            ("table_comment", "actor details"),
+                            ("table_rows", "200"),
+                            ("data_length", "16384"),
+                            ("index_length", "8192")
+                        ])
+                    ],
+                    metadata: nil
                 )
             ]
         )
@@ -201,6 +231,7 @@ struct MySQLClientTests {
 
         let objects = try await client.metadata.listTablesAndViews(in: "sakila")
         let columns = try await client.metadata.listColumns(in: "actor", schema: "sakila")
+        let options = try await client.metadata.tableOptions(for: "actor", schema: "sakila")
         let definition = try await client.metadata.objectDefinition(named: "actor", schema: "sakila", kind: .table)
 
         #expect(objects.map(\.name) == ["actor", "actor_info"])
@@ -211,9 +242,14 @@ struct MySQLClientTests {
         #expect(columns.last?.fullDataType == "varchar(45)")
         #expect(columns.last?.maxLength == 45)
         #expect(columns.last?.collation == "utf8mb4_0900_ai_ci")
+        #expect(options?.engine == "InnoDB")
+        #expect(options?.characterSet == "utf8mb4")
+        #expect(options?.autoIncrement == 201)
+        #expect(options?.estimatedRowCount == 200)
+        #expect(options?.dataLength == 16_384)
         #expect(definition.contains("CREATE TABLE `actor`"))
         #expect(await counter.current() == 1)
-        #expect(await metadata.preparedQueries.count == 2)
+        #expect(await metadata.preparedQueries.count == 3)
     }
 
     @Test
