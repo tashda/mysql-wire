@@ -19,6 +19,7 @@ public extension MySQLMetadataClient {
             extra,
             collation_name,
             character_set_name,
+            column_comment,
             ordinal_position
         FROM information_schema.columns
         WHERE table_schema = ? AND table_name = ?
@@ -61,6 +62,7 @@ public extension MySQLMetadataClient {
                 isAutoIncrement: extra.contains("auto_increment"),
                 collation: row.column("collation_name")?.string,
                 characterSet: row.column("character_set_name")?.string,
+                comment: row.column("column_comment")?.string?.nilIfEmpty,
                 ordinalPosition: ordinalPosition
             )
         }

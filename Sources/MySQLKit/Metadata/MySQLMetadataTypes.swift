@@ -42,6 +42,7 @@ public struct MySQLColumnInfo: Sendable, Hashable {
     public let isAutoIncrement: Bool
     public let collation: String?
     public let characterSet: String?
+    public let comment: String?
     public let ordinalPosition: Int
 
     public init(
@@ -56,6 +57,7 @@ public struct MySQLColumnInfo: Sendable, Hashable {
         isAutoIncrement: Bool,
         collation: String?,
         characterSet: String?,
+        comment: String?,
         ordinalPosition: Int
     ) {
         self.name = name
@@ -69,6 +71,7 @@ public struct MySQLColumnInfo: Sendable, Hashable {
         self.isAutoIncrement = isAutoIncrement
         self.collation = collation
         self.characterSet = characterSet
+        self.comment = comment
         self.ordinalPosition = ordinalPosition
     }
 }

@@ -126,6 +126,7 @@ struct MySQLClientTests {
             extra,
             collation_name,
             character_set_name,
+            column_comment,
             ordinal_position
         FROM information_schema.columns
         WHERE table_schema = ? AND table_name = ?
@@ -178,6 +179,7 @@ struct MySQLClientTests {
                             ("extra", "auto_increment"),
                             ("collation_name", nil),
                             ("character_set_name", nil),
+                            ("column_comment", nil),
                             ("ordinal_position", "1")
                         ]),
                         Self.textRow([
@@ -192,6 +194,7 @@ struct MySQLClientTests {
                             ("extra", ""),
                             ("collation_name", "utf8mb4_0900_ai_ci"),
                             ("character_set_name", "utf8mb4"),
+                            ("column_comment", "given name"),
                             ("ordinal_position", "2")
                         ])
                     ],
@@ -328,6 +331,7 @@ struct MySQLClientTests {
             extra,
             collation_name,
             character_set_name,
+            column_comment,
             ordinal_position
         FROM information_schema.columns
         WHERE table_schema = ? AND table_name = ?
@@ -408,6 +412,7 @@ struct MySQLClientTests {
                             ("extra", "auto_increment"),
                             ("collation_name", nil),
                             ("character_set_name", nil),
+                            ("column_comment", nil),
                             ("ordinal_position", "1")
                         ])
                     ],
