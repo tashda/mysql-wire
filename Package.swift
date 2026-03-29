@@ -11,6 +11,7 @@ let package = Package(
     products: [
         .library(name: "MySQLWire", targets: ["MySQLWire"]),
         .library(name: "MySQLKit", targets: ["MySQLKit"]),
+        .library(name: "MySQLKitTesting", targets: ["MySQLKitTesting"]),
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/mysql-nio.git", from: "1.9.1"),
@@ -31,6 +32,10 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ]
         ),
+        .target(
+            name: "MySQLKitTesting",
+            dependencies: ["MySQLKit"]
+        ),
         .testTarget(
             name: "MySQLWireTests",
             dependencies: ["MySQLWire"],
@@ -38,7 +43,7 @@ let package = Package(
         ),
         .testTarget(
             name: "MySQLKitTests",
-            dependencies: ["MySQLKit"],
+            dependencies: ["MySQLKit", "MySQLKitTesting"],
             path: "Tests/MySQLKitTests"
         ),
     ],
