@@ -52,7 +52,7 @@ public extension MySQLSecurityClient {
         WHERE COMPONENT_URN LIKE '%data_masking%'
         """
         let connection = try await serverConnection.activity()
-        let result = try await connection.query(sql)
+        let result = try await connection.query(sql, binds: [])
         let count = result.rows.first?.column("cnt")?.string.flatMap(Int.init) ?? 0
         return count > 0
     }
@@ -158,7 +158,7 @@ public extension MySQLSecurityClient {
         WHERE PLUGIN_NAME = 'audit_log'
         """
         let connection = try await serverConnection.activity()
-        let result = try await connection.query(sql)
+        let result = try await connection.query(sql, binds: [])
         return !result.rows.isEmpty
     }
 
@@ -167,12 +167,14 @@ public extension MySQLSecurityClient {
         let sql = "SELECT * FROM mysql.audit_log_filter LIMIT \(limit)"
         let connection = try await serverConnection.activity()
         let rows = try await connection.simpleQuery(sql)
-        return rows.enumerated().compactMap { index, row in
+        return rows.enumerated().map { index, row in
             let columns = row.columnDefinitions
             let values = columns.map { row.column($0.name)?.string }
+            let filterName = values.first.flatMap({ $0 }) ?? "\(index)"
+            let definition = values.dropFirst().first.flatMap({ $0 })
             return MySQLAuditLogFilter(
-                filterName: values.first ?? nil ?? "\(index)",
-                definition: values.dropFirst().first ?? nil
+                filterName: filterName,
+                definition: definition
             )
         }
     }
@@ -206,7 +208,7 @@ public extension MySQLSecurityClient {
         WHERE PLUGIN_NAME = 'MYSQL_FIREWALL'
         """
         let connection = try await serverConnection.activity()
-        let result = try await connection.query(sql)
+        let result = try await connection.query(sql, binds: [])
         return !result.rows.isEmpty
     }
 
