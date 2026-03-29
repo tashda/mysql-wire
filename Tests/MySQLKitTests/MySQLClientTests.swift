@@ -91,7 +91,7 @@ struct MySQLClientTests {
             serverConnection: serverConnection
         )
 
-        _ = try await client.query.simpleQuery("SELECT 1")
+        _ = try await client.simpleQuery("SELECT 1")
         _ = try await client.metadata.listDatabases()
         let currentDatabase = try await client.metadata.currentDatabase()
         try await client.metadata.selectDatabase("analytics")
@@ -541,11 +541,11 @@ struct MySQLClientTests {
             serverConnection: serverConnection
         )
 
-        let status = try await client.admin.globalStatus()
-        let variables = try await client.admin.globalVariables(named: "max_connections")
-        let processes = try await client.admin.processList()
-        try await client.admin.killQuery(threadID: 42)
-        let maintenance = try await client.admin.analyzeTable(schema: "sakila", table: "actor")
+        let status = try await client.serverConfig.globalStatus()
+        let variables = try await client.serverConfig.globalVariables(named: "max_connections")
+        let processes = try await client.activity.processList()
+        try await client.activity.killQuery(threadID: 42)
+        let maintenance = try await client.maintenance.analyzeTable(schema: "sakila", table: "actor")
         try await serverConnection.ping()
         await serverConnection.close()
 
@@ -694,10 +694,10 @@ struct MySQLClientTests {
             )
         )
 
-        try await client.query.transaction.begin()
-        try await client.query.transaction.commit()
+        try await client.transactions.begin()
+        try await client.transactions.commit()
         do {
-            _ = try await client.query.transaction.withTransaction {
+            _ = try await client.transactions.withTransaction {
                 struct Expected: Error {}
                 throw Expected()
             }
@@ -766,9 +766,9 @@ struct MySQLClientTests {
             )
         )
 
-        let explain = try await client.performance.explain("SELECT * FROM actor")
-        let explainJSON = try await client.performance.explainJSON("SELECT * FROM actor")
-        let explainAnalyze = try await client.performance.explainAnalyze("SELECT * FROM actor")
+        let explain = try await client.executionPlan.explain("SELECT * FROM actor")
+        let explainJSON = try await client.executionPlan.explainJSON("SELECT * FROM actor")
+        let explainAnalyze = try await client.executionPlan.explainAnalyze("SELECT * FROM actor")
         let dashboard = try await client.performance.dashboardStatus()
         let snapshot = try await client.activity.snapshot()
 
@@ -1008,9 +1008,9 @@ struct MySQLClientTests {
 
         try await client.admin.renameTable(schema: "sakila", from: "actor_old", to: "actor_new")
         try await client.admin.dropTable(schema: "sakila", name: "actor_tmp")
-        let logDestinations = try await client.admin.logDestinations()
-        let generalLog = try await client.admin.readTableLog(named: "general_log")
-        let backupCommand = client.admin.backupCommand(
+        let logDestinations = try await client.errorLog.logDestinations()
+        let generalLog = try await client.errorLog.readTableLog(named: "general_log")
+        let backupCommand = client.backupRestore.backupCommand(
             host: "db.internal",
             port: 3307,
             username: "echo",
@@ -1070,7 +1070,7 @@ struct MySQLClientTests {
             )
         )
 
-        let result = try await client.query.prepared.query(
+        let result = try await client.prepared.query(
             sql,
             binds: [MySQLData(int: 7), MySQLData(string: "PENELOPE")]
         )
@@ -1158,10 +1158,10 @@ struct MySQLClientTests {
             )
         )
 
-        let setResult = try await client.admin.setGlobalVariable("max_connections", to: "200")
-        let resetResult = try await client.admin.resetGlobalVariable("max_connections")
-        try await client.admin.flushTables()
-        let restoreCommand = client.admin.restoreCommand(
+        let setResult = try await client.serverConfig.setGlobalVariable("max_connections", to: "200")
+        let resetResult = try await client.serverConfig.resetGlobalVariable("max_connections")
+        try await client.maintenance.flushTables()
+        let restoreCommand = client.backupRestore.restoreCommand(
             host: "db.internal",
             port: 3307,
             username: "echo",
@@ -1502,7 +1502,7 @@ struct MySQLClientTests {
         )
         try await client.security.grantAdministrativeRole(MySQLAdministrativeRole.monitorAdmin, to: "ops", host: "%")
         try await client.security.revokeAdministrativeRole(MySQLAdministrativeRole.monitorAdmin, from: "ops", host: "%")
-        let backupCommand = client.admin.backupCommand(
+        let backupCommand = client.backupRestore.backupCommand(
             host: "db.internal",
             port: 3306,
             username: "echo",
@@ -1522,7 +1522,7 @@ struct MySQLClientTests {
                 tables: ["actor", "film"]
             )
         )
-        let restoreCommand = client.admin.restoreCommand(
+        let restoreCommand = client.backupRestore.restoreCommand(
             host: "db.internal",
             port: 3306,
             username: "echo",
@@ -1589,19 +1589,19 @@ struct MySQLClientTests {
             )
         )
 
-        try await client.admin.createView(
+        try await client.views.createView(
             schema: "sakila",
             name: "actor_names",
             definitionSQL: "SELECT actor_id, first_name FROM actor",
             replace: true
         )
-        try await client.admin.alterView(
+        try await client.views.alterView(
             schema: "sakila",
             name: "actor_names",
             definitionSQL: "SELECT actor_id, last_name FROM actor"
         )
-        try await client.admin.dropView(schema: "sakila", name: "actor_names")
-        try await client.admin.createRoutine(
+        try await client.views.dropView(schema: "sakila", name: "actor_names")
+        try await client.routines.createRoutine(
             schema: "sakila",
             name: "film_count",
             kind: .function,
@@ -1609,8 +1609,8 @@ struct MySQLClientTests {
             characteristicsSQL: "DETERMINISTIC",
             bodySQL: "RETURN 42"
         )
-        try await client.admin.dropRoutine(schema: "sakila", name: "film_count", kind: .function)
-        try await client.admin.createTrigger(
+        try await client.routines.dropRoutine(schema: "sakila", name: "film_count", kind: .function)
+        try await client.triggers.createTrigger(
             schema: "sakila",
             name: "actor_bi",
             timing: .before,
@@ -1618,21 +1618,21 @@ struct MySQLClientTests {
             table: "actor",
             bodySQL: "SET NEW.first_name = UPPER(NEW.first_name);"
         )
-        try await client.admin.dropTrigger(schema: "sakila", name: "actor_bi")
-        try await client.admin.createEvent(
+        try await client.triggers.dropTrigger(schema: "sakila", name: "actor_bi")
+        try await client.events.createEvent(
             schema: "sakila",
             name: "daily_cleanup",
             scheduleSQL: "EVERY 1 DAY",
             bodySQL: "DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 30 DAY"
         )
-        try await client.admin.alterEvent(
+        try await client.events.alterEvent(
             schema: "sakila",
             name: "daily_cleanup",
             scheduleSQL: "EVERY 7 DAY",
             bodySQL: "DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 90 DAY",
             enabled: false
         )
-        try await client.admin.dropEvent(schema: "sakila", name: "daily_cleanup")
+        try await client.events.dropEvent(schema: "sakila", name: "daily_cleanup")
 
         #expect(await primary.simpleQueries == [
             "CREATE OR REPLACE VIEW `sakila`.`actor_names` AS SELECT actor_id, first_name FROM actor",

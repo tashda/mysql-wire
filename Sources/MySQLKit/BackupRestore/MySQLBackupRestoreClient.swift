@@ -1,5 +1,7 @@
-public extension MySQLAdminClient {
-    func backupCommand(
+public struct MySQLBackupRestoreClient: Sendable {
+    let serverConnection: MySQLServerConnection
+
+    public func backupCommand(
         host: String,
         port: Int,
         username: String,
@@ -16,7 +18,7 @@ public extension MySQLAdminClient {
         )
     }
 
-    func backupCommand(
+    public func backupCommand(
         host: String,
         port: Int,
         username: String,
@@ -71,7 +73,7 @@ public extension MySQLAdminClient {
         return command
     }
 
-    func restoreCommand(
+    public func restoreCommand(
         host: String,
         port: Int,
         username: String,
