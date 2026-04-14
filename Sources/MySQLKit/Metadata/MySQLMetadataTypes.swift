@@ -226,7 +226,7 @@ public struct MySQLTableOptionsInfo: Sendable, Hashable {
     }
 }
 
-public struct MySQLRoutineInfo: Sendable, Hashable, Identifiable {
+public struct MySQLRoutineInfo: Sendable, Hashable {
     public let schema: String
     public let name: String
     public let type: String
@@ -238,11 +238,9 @@ public struct MySQLRoutineInfo: Sendable, Hashable, Identifiable {
         self.type = type
         self.definition = definition
     }
-
-    public var id: String { "\(schema).\(type.lowercased()).\(name)" }
 }
 
-public struct MySQLTriggerInfo: Sendable, Hashable, Identifiable {
+public struct MySQLTriggerInfo: Sendable, Hashable {
     public let schema: String
     public let name: String
     public let table: String
@@ -258,11 +256,9 @@ public struct MySQLTriggerInfo: Sendable, Hashable, Identifiable {
         self.event = event
         self.statement = statement
     }
-
-    public var id: String { "\(schema).\(name)" }
 }
 
-public struct MySQLEventInfo: Sendable, Hashable, Identifiable {
+public struct MySQLEventInfo: Sendable, Hashable {
     public let schema: String
     public let name: String
     public let status: String?
@@ -276,8 +272,6 @@ public struct MySQLEventInfo: Sendable, Hashable, Identifiable {
         self.schedule = schedule
         self.definition = definition
     }
-
-    public var id: String { "\(schema).\(name)" }
 }
 
 public struct MySQLMetadataSearchResult: Sendable, Hashable {

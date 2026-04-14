@@ -1,4 +1,4 @@
-public struct MySQLUserAccount: Sendable, Hashable, Identifiable {
+public struct MySQLUserAccount: Sendable, Hashable {
     public let username: String
     public let host: String
     public let authenticationPlugin: String?
@@ -18,12 +18,6 @@ public struct MySQLUserAccount: Sendable, Hashable, Identifiable {
         self.accountLocked = accountLocked
         self.passwordExpired = passwordExpired
     }
-
-    /// Stable identifier in MySQL's `'user'@'host'` format.
-    public var id: String { "'\(username)'@'\(host)'" }
-
-    /// Display name in MySQL's `'user'@'host'` format. Matches the `grantee` column in information_schema.
-    public var accountName: String { "'\(username)'@'\(host)'" }
 }
 
 public struct MySQLAccountLimits: Sendable, Hashable {
@@ -90,18 +84,9 @@ public struct MySQLPrivilegeGrant: Sendable, Hashable {
         self.privilegeType = privilegeType
         self.isGrantable = isGrantable
     }
-
-    /// Parses the `grantee` string (MySQL `'user'@'host'` format) into username and host components.
-    public var parsedGrantee: (username: String, host: String)? {
-        guard grantee.hasPrefix("'") && grantee.hasSuffix("'") else { return nil }
-        guard let separatorRange = grantee.range(of: "'@'") else { return nil }
-        let username = String(grantee[grantee.index(after: grantee.startIndex)..<separatorRange.lowerBound])
-        let host = String(grantee[separatorRange.upperBound..<grantee.index(before: grantee.endIndex)])
-        return (username: username, host: host)
-    }
 }
 
-public struct MySQLRoleDefinition: Sendable, Hashable, Identifiable {
+public struct MySQLRoleDefinition: Sendable, Hashable {
     public let name: String
     public let host: String
 
@@ -109,12 +94,6 @@ public struct MySQLRoleDefinition: Sendable, Hashable, Identifiable {
         self.name = name
         self.host = host
     }
-
-    /// Stable identifier in `name@host` format (no quotes), matching the roleAssignment key format.
-    public var id: String { "\(name)@\(host)" }
-
-    /// Display name in MySQL's `'name'@'host'` format.
-    public var accountName: String { "'\(name)'@'\(host)'" }
 }
 
 public struct MySQLUserMutationResult: Sendable, Hashable {
