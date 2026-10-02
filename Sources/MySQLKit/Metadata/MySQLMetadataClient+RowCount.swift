@@ -1,3 +1,4 @@
+import MySQLWire
 
 public extension MySQLMetadataClient {
     /// The exact number of rows (`COUNT(*)`), unlike `information_schema.TABLES.TABLE_ROWS`, which

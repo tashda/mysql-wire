@@ -1,4 +1,5 @@
 import Foundation
+import MySQLWire
 
 public extension MySQLMetadataClient {
     func tableStructure(for table: String, schema: String? = nil) async throws -> MySQLTableStructure {

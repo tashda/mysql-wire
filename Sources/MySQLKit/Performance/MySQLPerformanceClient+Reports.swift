@@ -1,3 +1,4 @@
+import MySQLWire
 
 public struct MySQLPerformanceReport: Sendable, Hashable {
     public let name: String

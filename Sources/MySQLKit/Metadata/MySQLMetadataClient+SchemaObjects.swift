@@ -1,3 +1,4 @@
+import MySQLWire
 
 public extension MySQLMetadataClient {
     func listTablesAndViews(in schema: String? = nil) async throws -> [MySQLSchemaObject] {

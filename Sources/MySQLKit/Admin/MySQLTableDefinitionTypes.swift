@@ -1,3 +1,4 @@
+import MySQLWire
 
 /// A column of a new table or an added column.
 public struct MySQLColumnDefinition: Sendable, Hashable {

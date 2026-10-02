@@ -1,3 +1,4 @@
+import MySQLWire
 
 public extension MySQLMetadataClient {
     func listTriggers(in schema: String? = nil) async throws -> [MySQLTriggerInfo] {

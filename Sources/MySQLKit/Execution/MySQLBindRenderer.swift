@@ -1,3 +1,4 @@
+import MySQLWire
 
 enum MySQLBindRenderer {
     static func renderLiteral(_ data: MySQLData) throws -> String {

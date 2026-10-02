@@ -1,4 +1,5 @@
 import Foundation
+import MySQLWire
 
 public extension MySQLSessionClient {
     func currentUser() async throws -> String? {
@@ -37,17 +38,11 @@ public extension MySQLSessionClient {
 
     func setSessionVariable(name: String, value: String?) async throws -> MySQLSessionVariable {
         // Numbers go unquoted: numeric variables refuse a string ("Incorrect argument type").
-        // Text is a parameter, escaped by the connection for its character set and sql_mode.
+        let renderedValue = value.map { value in
+            Self.isNumericLiteral(value) ? value : "'\(MySQLBindRenderer.escapeStringLiteral(value))'"
+        } ?? "DEFAULT"
         let connection = try await serverConnection.primary()
-        let statement = "SET SESSION `\(escapedIdentifier(name))` = "
-        switch value {
-        case let value? where Self.isNumericLiteral(value):
-            _ = try await connection.simpleQuery(statement + value)
-        case let value?:
-            _ = try await connection.query(statement + "?", binds: [MySQLData(string: value)])
-        case nil:
-            _ = try await connection.simpleQuery(statement + "DEFAULT")
-        }
+        _ = try await connection.simpleQuery("SET SESSION `\(escapedIdentifier(name))` = \(renderedValue)")
         let resolvedValue = value ?? "DEFAULT"
         return MySQLSessionVariable(name: name, value: resolvedValue)
     }

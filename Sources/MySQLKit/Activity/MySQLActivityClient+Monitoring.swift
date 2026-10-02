@@ -1,4 +1,5 @@
 import Foundation
+import MySQLWire
 
 public extension MySQLActivityClient {
     func processList() async throws -> [MySQLProcess] {

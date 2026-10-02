@@ -1,3 +1,4 @@
+import MySQLWire
 
 public extension MySQLClient {
     func simpleQuery(_ sql: String) async throws -> [MySQLRow] {
@@ -9,7 +10,7 @@ public extension MySQLClient {
         try await prepared.query(sql, binds: binds)
     }
 
-    func stream(_ sql: String) async throws -> MySQLRowStream {
+    func stream(_ sql: String) async throws -> AsyncThrowingStream<MySQLRow, Error> {
         let connection = try await serverConnection.primary()
         return try await connection.stream(sql)
     }

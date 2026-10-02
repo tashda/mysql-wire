@@ -1,3 +1,4 @@
+import MySQLWire
 
 public extension MySQLMetadataClient {
     func listEvents(in schema: String? = nil) async throws -> [MySQLEventInfo] {

@@ -1,3 +1,4 @@
+import MySQLWire
 
 public extension MySQLSecurityClient {
     func schemaPrivileges(for grantee: String? = nil) async throws -> [MySQLPrivilegeGrant] {

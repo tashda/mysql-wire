@@ -1,3 +1,4 @@
+import MySQLWire
 
 public struct MySQLMetadataClient: Sendable {
     private static let systemDatabases: Set<String> = [
